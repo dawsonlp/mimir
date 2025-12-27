@@ -3,14 +3,13 @@
 
 services:
   postgres:
-    build:
-      context: .
-      dockerfile: infrastructure/docker/postgres/Dockerfile
-    image: mimir-postgres:latest
+    image: dawsonlp/mimir-postgres:latest
     ports:
       - "35432:5432"  # Host:Container - avoid common port conflicts
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # PostgreSQL 18+ requires mount at /var/lib/postgresql (not /data subdirectory)
+      # Data will be placed in a version-specific subdirectory automatically
+      - postgres_data:/var/lib/postgresql
       - ./init-scripts:/docker-entrypoint-initdb.d:ro
     environment:
       POSTGRES_DB: mimir
