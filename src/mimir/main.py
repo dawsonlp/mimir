@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 from mimir.config import get_settings
 from mimir.database import close_pool, health_check, init_pool
+from mimir.routers import artifacts, tenants
 
 
 def configure_logging(log_level: str) -> None:
@@ -176,6 +177,10 @@ def create_app() -> FastAPI:
         response.headers["X-Request-ID"] = request_id
 
         return response
+
+    # Register API routers
+    app.include_router(tenants.router, prefix="/api/v1")
+    app.include_router(artifacts.router, prefix="/api/v1")
 
     return app
 

@@ -21,15 +21,16 @@
 ## Implementation Phases
 
 - [x] Phase 1: Foundation - Project scaffolding, Docker Compose, database setup ✅
-- [ ] Phase 2: Core Entities - Artifacts model, versions, CRUD endpoints
+- [x] Phase 2: Core Entities - Artifacts model, versions, CRUD endpoints ✅
   - [x] Plain SQL migration system (replaced Alembic)
   - [x] Tenants table with SERIAL PK, shortname
   - [x] Artifacts table with SERIAL PK
   - [x] Artifact_versions table (append-only)
   - [x] Design decisions DD-003 (no ORM), DD-005 (SERIAL PKs)
-  - [ ] Pydantic schemas for API
-  - [ ] CRUD endpoints
-  - [ ] Unit tests for artifact service
+  - [x] Pydantic schemas (tenant.py, artifact.py)
+  - [x] Services (tenant_service.py, artifact_service.py)
+  - [x] API routers (/api/v1/tenants, /api/v1/artifacts)
+  - [x] Unit tests passing
 - [ ] Phase 3: Intent & Decisions - Intents, intent groups, decisions
 - [ ] Phase 4: Spans & Relations - Spans, relations, traversal queries
 - [ ] Phase 5: Search & Embeddings - pgvector, FTS, semantic search
