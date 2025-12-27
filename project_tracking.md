@@ -41,7 +41,14 @@
   - [x] API routers (/api/v1/intents, /api/v1/intent-groups, /api/v1/decisions)
   - [x] Decision supersede endpoint with chain tracking
   - [x] Linting and tests passing
-- [ ] Phase 4: Spans & Relations - Spans, relations, traversal queries
+- [x] Phase 4: Spans & Relations ✅
+  - [x] Migration 005: spans table with span_type enum
+  - [x] Migration 006: relations table with entity_type, relation_type enums
+  - [x] Pydantic schemas (span.py, relation.py)
+  - [x] Services (span_service.py, relation_service.py)
+  - [x] API routers (/api/v1/spans, /api/v1/relations)
+  - [x] Entity relations endpoint for graph queries
+  - [x] Linting and tests passing
 - [ ] Phase 5: Search & Embeddings - pgvector, FTS, semantic search
 - [ ] Phase 6: Provenance & Polish - Provenance recording, documentation
 
@@ -96,3 +103,41 @@ See `.env.example` for the template with all required variables:
 - `PATCH /api/v1/decisions/{id}` - Update decision
 - `DELETE /api/v1/decisions/{id}` - Delete decision
 - `POST /api/v1/decisions/{id}/supersede` - Supersede with new decision
+
+## Phase 4 API Summary
+
+### Spans
+- `POST /api/v1/spans` - Create span (quote, highlight, annotation)
+- `GET /api/v1/spans` - List spans (paginated, filter by artifact/type)
+- `GET /api/v1/spans/{id}` - Get span
+- `PATCH /api/v1/spans/{id}` - Update span
+- `DELETE /api/v1/spans/{id}` - Delete span
+
+### Relations
+- `POST /api/v1/relations` - Create relation between entities
+- `GET /api/v1/relations` - List relations (paginated, filter by source/target/type)
+- `GET /api/v1/relations/entity/{type}/{id}` - List all relations for an entity
+- `GET /api/v1/relations/{id}` - Get relation
+- `PATCH /api/v1/relations/{id}` - Update relation
+- `DELETE /api/v1/relations/{id}` - Delete relation
+
+### Span Types
+- `quote` - Exact text selection
+- `highlight` - Emphasized section
+- `annotation` - Commentary on a section
+- `reference` - Reference marker
+- `bookmark` - Saved position
+
+### Entity Types (for Relations)
+- `artifact`, `artifact_version`, `intent`, `intent_group`, `decision`, `span`
+
+### Relation Types
+- `references` - Source references target
+- `supports` - Source provides evidence for target
+- `contradicts` - Source contradicts target
+- `derived_from` - Source was created from target
+- `supersedes` - Source replaces target
+- `related_to` - General association
+- `parent_of` / `child_of` - Hierarchical relationships
+- `implements` - Source implements target (decision→intent)
+- `resolves` - Source resolves target (decision→intent)

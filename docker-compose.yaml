@@ -24,14 +24,13 @@ services:
     restart: unless-stopped
 
   api:
-    build:
-      context: .
-      dockerfile: infrastructure/docker/api/Dockerfile
+    image: dawsonlp/mimir-api:latest
     ports:
       - "38000:8000"  # Host:Container - avoid common port conflicts
     environment:
-      # Database URL constructed with internal container port
-      DATABASE_URL: postgresql+psycopg://mimir:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/mimir
+      # Database URL constructed with internal container port (psycopg v3 format)
+      DATABASE_URL: postgresql://mimir:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/mimir
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       postgres:
