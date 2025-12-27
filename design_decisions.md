@@ -28,7 +28,7 @@ CREATE EXTENSION IF NOT EXISTS vector SCHEMA mimirdata;
 - All table references use the `mimirdata` schema
 - Extensions (pgvector) are installed within the schema
 - Clean separation from `public` schema
-- Alembic migrations target the `mimirdata` schema
+- SQL migrations target the `mimirdata` schema
 
 ---
 
@@ -50,8 +50,8 @@ Introduce a `tenants` table that all entity tables reference via `tenant_id`.
 ### Tenant Model
 ```
 mimirdata.tenants
-├── id (uuid, PK)
-├── slug (text, unique) -- e.g., "development", "systems_architecture"
+├── id (serial, PK)
+├── shortname (text, unique) -- e.g., "development", "systems_architecture"
 ├── name (text) -- Display name
 ├── tenant_type (enum: environment, project, experiment)
 ├── description (text, nullable)
@@ -64,20 +64,20 @@ mimirdata.tenants
 All entity tables gain a `tenant_id` column:
 ```
 artifacts
-├── id (uuid, PK)
-├── tenant_id (uuid, FK → tenants.id, NOT NULL)  -- NEW
+├── id (serial, PK)
+├── tenant_id (int, FK → tenants.id, NOT NULL)
 ├── artifact_type (enum)
 ├── ...
 ```
 
 ### API Implications
-- Tenant specified via header: `X-Tenant-ID: <uuid>` or `X-Tenant-Slug: <slug>`
+- Tenant specified via header: `X-Tenant-ID: <int>` or `X-Tenant-Shortname: <shortname>`
 - All queries automatically filtered by tenant
 - Tenant context resolved at middleware level
 - Default tenant configurable per environment
 
 ### Example Tenants
-| slug | name | tenant_type |
+| shortname | name | tenant_type |
 |------|------|-------------|
 | development | Development | environment |
 | qa | QA | environment |
@@ -95,28 +95,83 @@ artifacts
 
 ---
 
-## DD-003: SQL as Implementation Language (No ORM)
+## DD-003: SQL as Implementation Language (No ORM, No Alembic)
 
 **Date:** December 26, 2025  
 **Status:** Accepted  
+**Updated:** December 26, 2025  
 
 ### Context
-We considered using SQLAlchemy ORM vs. raw SQL for data access.
+We considered using SQLAlchemy ORM vs. raw SQL for data access. Initially used SQLAlchemy Core with Alembic for migrations, but this introduced unnecessary abstraction.
 
 ### Decision
-Use raw SQL via psycopg v3 for all data access. SQLAlchemy Core is used only for table definitions (to support Alembic autogenerate).
+Use raw SQL via psycopg v3 for all data access AND schema definitions. No ORM, no SQLAlchemy at all.
+
+### Migration Approach
+Plain SQL migration files with a simple runner:
+```
+migrations/
+├── versions/
+│   ├── 001_create_tenants.up.sql
+│   ├── 001_create_tenants.down.sql
+│   └── ...
+├── migrate.py          # Minimal migration runner
+└── README.md
+```
+
+Commands:
+```bash
+poetry run python -m migrations.migrate up      # Apply pending
+poetry run python -m migrations.migrate down    # Rollback last
+poetry run python -m migrations.migrate status  # Show status
+```
 
 ### Rationale
 - API is request→SQL→response, not object-graph-centric
 - PostgreSQL features (pgvector, FTS, recursive CTEs, JSONB) require raw SQL
 - Schema is stable and deliberate, not rapidly evolving
 - SQL is transparent about what the database actually does
+- **Schema definitions should also be SQL, not Python abstractions**
+- Rollback support via `.down.sql` files
 
 ### Consequences
 - Queries written in `.sql` files or as SQL strings
+- Schema changes are pure SQL migrations
 - No lazy loading or relationship traversal magic
 - Full control over query optimization
-- Alembic autogenerate still works via SQLAlchemy Core metadata
+- Migrations tracked in `mimirdata.schema_migrations` table
+
+---
+
+## DD-005: SERIAL Primary Keys (Not UUID)
+
+**Date:** December 26, 2025  
+**Status:** Accepted  
+
+### Context
+Choosing between UUID and SERIAL (auto-increment) for primary keys.
+
+### Decision
+Use SERIAL (PostgreSQL auto-increment integers) for all primary keys. Use INT for foreign keys.
+
+### Rationale
+- **Storage efficiency**: INT = 4 bytes vs UUID = 16 bytes per row per FK
+- **Index performance**: Smaller keys = faster B-tree operations
+- **Simplicity**: Server-generated, opaque identifiers
+- **Single database**: No distributed system collision concerns
+- **External references**: `external_id` column stores original source IDs (e.g., ChatGPT conversation ID)
+- **YAGNI**: If we ever need global uniqueness, we can add migration columns then
+
+### API Implications
+- IDs are server-assigned only; clients never provide IDs on creation
+- API returns integer IDs: `{"id": 42, ...}`
+- Clients use returned IDs for subsequent operations
+
+### Consequences
+- Smaller tables and indexes
+- Faster joins and lookups
+- IDs are sequential (not globally unique, but that's fine for single-database)
+- External traceability via `external_id` metadata column
 
 ---
 

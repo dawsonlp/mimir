@@ -15,10 +15,8 @@ uvicorn = {extras = ["standard"], version = "*"}
 pydantic = "*"
 pydantic-settings = "*"
 
-# Database - PostgreSQL with pgvector
-sqlalchemy = "*"
+# Database - PostgreSQL with pgvector (NO ORM - raw SQL via psycopg)
 psycopg = {extras = ["binary", "pool"], version = "*"}
-alembic = "*"
 pgvector = "*"
 
 # Logging
