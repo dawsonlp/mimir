@@ -22,6 +22,9 @@ pgvector = "*"
 # Logging
 structlog = "*"
 
+# HTTP client for external APIs (OpenAI embeddings)
+httpx = "*"
+
 [tool.poetry.group.dev.dependencies]
 # Testing
 pytest = "*"
