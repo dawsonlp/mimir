@@ -17,13 +17,18 @@ class EmbeddingModel(str, Enum):
 
 
 # Model dimension mappings
+# Note: Database vector column is 1536 dimensions (pgvector HNSW index limit is 2000)
+# Large model (3072 dims) must use dimensions=1536 parameter to truncate
 EMBEDDING_DIMENSIONS: dict[EmbeddingModel, int] = {
     EmbeddingModel.OPENAI_TEXT_EMBEDDING_3_SMALL: 1536,
-    EmbeddingModel.OPENAI_TEXT_EMBEDDING_3_LARGE: 3072,
+    EmbeddingModel.OPENAI_TEXT_EMBEDDING_3_LARGE: 1536,  # Truncated from 3072 to fit HNSW limit
     EmbeddingModel.OPENAI_TEXT_EMBEDDING_ADA_002: 1536,
     EmbeddingModel.SENTENCE_TRANSFORMERS_ALL_MPNET: 768,
     EmbeddingModel.SENTENCE_TRANSFORMERS_ALL_MINILM: 384,
 }
+
+# Maximum dimensions supported by database (pgvector HNSW index limit is 2000)
+MAX_EMBEDDING_DIMENSIONS = 1536
 
 
 class EmbeddingCreate(BaseModel):

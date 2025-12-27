@@ -11,13 +11,15 @@ CREATE TYPE mimirdata.embedding_model AS ENUM (
 );
 
 -- Embeddings table (one-to-many with artifacts, allows multiple models)
+-- Note: pgvector HNSW index supports max 2000 dimensions
+-- Using 1536 dimensions (supports text-embedding-3-small, ada-002, and truncated large model)
 CREATE TABLE mimirdata.embeddings (
     id SERIAL PRIMARY KEY,
     tenant_id INT NOT NULL REFERENCES mimirdata.tenants(id) ON DELETE RESTRICT,
     artifact_id INT NOT NULL REFERENCES mimirdata.artifacts(id) ON DELETE CASCADE,
     artifact_version_id INT REFERENCES mimirdata.artifact_versions(id) ON DELETE SET NULL,
     model mimirdata.embedding_model NOT NULL,
-    embedding mimirdata.vector(3072) NOT NULL,  -- Max dimension (3072 for large model)
+    embedding mimirdata.vector(1536) NOT NULL,  -- 1536 dimensions (HNSW max is 2000)
     dimensions INT NOT NULL,                      -- Actual dimensions used
     chunk_index INT NOT NULL DEFAULT 0,           -- For chunked documents (0 = full doc)
     chunk_text TEXT,                              -- Original text chunk (optional, for debugging)
@@ -29,6 +31,7 @@ CREATE TABLE mimirdata.embeddings (
 
 -- HNSW index for approximate nearest neighbor search (cosine similarity)
 -- m=16: connections per node, ef_construction=64: build-time accuracy
+-- Note: HNSW supports max 2000 dimensions; we use 1536 for best model compatibility
 CREATE INDEX idx_embeddings_vector_hnsw ON mimirdata.embeddings 
     USING hnsw (embedding mimirdata.vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
@@ -97,7 +100,7 @@ UPDATE mimirdata.artifact_versions SET
 -- Comments for documentation
 COMMENT ON TABLE mimirdata.embeddings IS 'Vector embeddings for semantic search (one-to-many with artifacts)';
 COMMENT ON COLUMN mimirdata.embeddings.model IS 'Embedding model used to generate the vector';
-COMMENT ON COLUMN mimirdata.embeddings.embedding IS 'Vector embedding (max 3072 dimensions for OpenAI large model)';
+COMMENT ON COLUMN mimirdata.embeddings.embedding IS 'Vector embedding (1536 dimensions for OpenAI text-embedding-3-small)';
 COMMENT ON COLUMN mimirdata.embeddings.dimensions IS 'Actual number of dimensions in the embedding';
 COMMENT ON COLUMN mimirdata.embeddings.chunk_index IS 'Index for chunked documents (0 = entire document)';
 COMMENT ON COLUMN mimirdata.embeddings.chunk_text IS 'Original text chunk used to generate embedding (for debugging)';

@@ -10,6 +10,7 @@ from mimir.database import get_connection
 from mimir.models import SCHEMA_NAME
 from mimir.schemas.embedding import (
     EMBEDDING_DIMENSIONS,
+    MAX_EMBEDDING_DIMENSIONS,
     EmbeddingBatchCreate,
     EmbeddingBatchResponse,
     EmbeddingCreate,
@@ -185,9 +186,14 @@ async def create_embedding(
 
     dimensions = len(embedding)
 
+    # Truncate to max dimensions if needed (e.g., large model with 3072 dims)
+    if dimensions > MAX_EMBEDDING_DIMENSIONS:
+        embedding = embedding[:MAX_EMBEDDING_DIMENSIONS]
+        dimensions = MAX_EMBEDDING_DIMENSIONS
+
     # Store in database
-    # Pad embedding to max dimensions (3072) for storage
-    padded_embedding = embedding + [0.0] * (3072 - dimensions)
+    # Pad embedding to max dimensions (1536) for storage
+    padded_embedding = embedding + [0.0] * (MAX_EMBEDDING_DIMENSIONS - dimensions)
 
     async with get_connection() as conn:
         result = await conn.execute(
@@ -287,7 +293,11 @@ async def create_embeddings_batch(
             async with get_connection() as conn:
                 for idx, (artifact_id, text) in enumerate(batch):
                     embedding = embeddings[idx]
-                    padded_embedding = embedding + [0.0] * (3072 - dimensions)
+                    # Truncate to max dimensions if needed
+                    if len(embedding) > MAX_EMBEDDING_DIMENSIONS:
+                        embedding = embedding[:MAX_EMBEDDING_DIMENSIONS]
+                        dimensions = MAX_EMBEDDING_DIMENSIONS
+                    padded_embedding = embedding + [0.0] * (MAX_EMBEDDING_DIMENSIONS - len(embedding))
 
                     await conn.execute(
                         f"""
