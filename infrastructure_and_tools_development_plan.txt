@@ -514,6 +514,96 @@ Profile Separation:
   - config/production.yaml
   - Loaded based on ENVIRONMENT variable
 
+4.4 SECRETS AND PASSWORD MANAGEMENT
+-------------------------------------
+
+CRITICAL: All passwords and secrets require protection throughout the system.
+
+Password Requirements:
+  - Minimum 16 characters
+  - Mix of uppercase, lowercase, numbers, and symbols
+  - No dictionary words or common patterns
+  - Unique per environment (dev, staging, production)
+  - No default passwords anywhere in the codebase
+
+Password Generation:
+  ```bash
+  # Generate a secure password
+  openssl rand -base64 32
+  
+  # Or using Python
+  python -c "import secrets; print(secrets.token_urlsafe(32))"
+  ```
+
+Secrets Storage by Environment:
+
+  Development:
+    - Store in .env file (NEVER committed to git)
+    - .env is in .gitignore
+    - Use .env.example as template (no actual secrets)
+  
+  Production:
+    - AWS Secrets Manager (preferred for AWS deployments)
+    - Kubernetes Secrets (for K8s deployments)
+    - HashiCorp Vault (for complex secret rotation needs)
+    - NEVER store in environment files or container images
+  
+  CI/CD:
+    - GitHub Actions secrets for pipeline credentials
+    - Short-lived tokens where possible
+    - Separate credentials per environment
+
+Validation at Startup:
+  The application MUST validate required secrets at startup:
+  
+  ```python
+  from pydantic_settings import BaseSettings
+  from pydantic import field_validator, SecretStr
+  
+  class Settings(BaseSettings):
+      postgres_password: SecretStr
+      
+      @field_validator('postgres_password')
+      @classmethod
+      def validate_password_strength(cls, v: SecretStr) -> SecretStr:
+          password = v.get_secret_value()
+          if len(password) < 16:
+              raise ValueError('POSTGRES_PASSWORD must be at least 16 characters')
+          if password == 'your-secure-password-here':
+              raise ValueError('POSTGRES_PASSWORD cannot be the example value')
+          if not password:
+              raise ValueError('POSTGRES_PASSWORD is required')
+          return v
+  ```
+
+Protected Items:
+  | Secret | Storage | Notes |
+  |--------|---------|-------|
+  | POSTGRES_PASSWORD | .env / Secrets Manager | Database access |
+  | DATABASE_URL | Constructed at runtime | Contains password |
+  | API_KEY (future) | Secrets Manager | For external services |
+  | JWT_SECRET (future) | Secrets Manager | For auth tokens |
+
+Anti-Patterns (DO NOT):
+  - ❌ Hardcode passwords in source code
+  - ❌ Commit .env files to git
+  - ❌ Use default/example passwords in any environment
+  - ❌ Log passwords or secrets (even partially masked)
+  - ❌ Store secrets in Docker images
+  - ❌ Pass secrets via command-line arguments (visible in ps)
+  - ❌ Use simple or predictable passwords
+
+Docker Compose Secrets Pattern:
+  ```yaml
+  services:
+    postgres:
+      environment:
+        # Password injected from host environment
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+  ```
+  
+  The `?` syntax causes docker compose to fail if the variable is not set.
+
 ================================================================================
 SECTION 5: DEVELOPMENT WORKFLOW
 ================================================================================
