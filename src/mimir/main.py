@@ -19,6 +19,7 @@ from mimir.routers import (
     artifacts,
     decisions,
     intents,
+    provenance,
     relations,
     search,
     spans,
@@ -194,6 +195,7 @@ def create_app() -> FastAPI:
     app.include_router(spans.router, prefix="/api/v1")
     app.include_router(relations.router, prefix="/api/v1")
     app.include_router(search.router, prefix="/api/v1")
+    app.include_router(provenance.router, prefix="/api/v1")
 
     return app
 

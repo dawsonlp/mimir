@@ -64,7 +64,16 @@
   - [x] API routers (/api/v1/search, /api/v1/embeddings)
   - [x] Configuration: OPENAI_API_KEY, DEFAULT_EMBEDDING_MODEL
   - [x] Linting and tests passing
-- [ ] Phase 6: Provenance & Polish - Provenance recording, documentation
+- [x] Phase 6: Provenance & Polish ✅
+  - [x] Migration 008: provenance_events table (append-only audit log)
+  - [x] Enums: provenance_entity_type, provenance_action, provenance_actor_type
+  - [x] Pydantic schemas (provenance.py)
+  - [x] Services (provenance_service.py)
+  - [x] API routers (/api/v1/provenance)
+  - [x] Entity history queries
+  - [x] Correlated event tracking
+  - [x] Time-based and actor filtering
+  - [x] Linting and tests passing
 
 ## Conventions
 
@@ -183,3 +192,30 @@ See `.env.example` for the template with all required variables:
 - `semantic` - Vector similarity using cosine distance with HNSW index
 - `fulltext` - PostgreSQL tsvector/tsquery with GIN index
 - `hybrid` - Combined using Reciprocal Rank Fusion (RRF, k=60)
+
+## Phase 6 API Summary
+
+### Provenance Events
+- `POST /api/v1/provenance` - Record a provenance event
+- `GET /api/v1/provenance` - List events (paginated, filter by entity/action/actor/time)
+- `GET /api/v1/provenance/entity/{type}/{id}` - Get provenance history for an entity
+- `GET /api/v1/provenance/correlation/{id}` - Get all events with same correlation ID
+
+### Provenance Entity Types
+- `tenant`, `artifact`, `artifact_version`, `intent`, `intent_group`
+- `decision`, `span`, `relation`, `embedding`
+
+### Provenance Actions
+- `create` - Entity created
+- `update` - Entity modified
+- `delete` - Entity removed
+- `supersede` - Entity replaced by another
+- `archive` - Entity archived
+- `restore` - Entity restored from archive
+
+### Provenance Actor Types
+- `user` - Human user
+- `system` - Automated system process
+- `llm` - Large language model
+- `api_client` - API client application
+- `migration` - Database migration
