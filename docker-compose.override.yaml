@@ -1,0 +1,17 @@
+# Development overrides - hot reload and debugging
+# This file is automatically applied with docker-compose.yaml
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/api/Dockerfile
+      target: builder  # Use builder stage for dev
+    volumes:
+      # Mount source code for hot reload
+      - ./src:/app/src:ro
+      - ./migrations:/app/migrations:ro
+    environment:
+      LOG_LEVEL: DEBUG
+    # Override CMD for hot reload in development
+    command: ["uvicorn", "mimir.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/src"]

@@ -63,3 +63,5 @@ Thumbs.db
 
 # Project specific
 postgres_data/
+# Exclude lock file during development (Section 7.1 - lock for QA/Production only)
+poetry.lock
