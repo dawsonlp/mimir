@@ -1,0 +1,850 @@
+================================================================================
+INFRASTRUCTURE & TOOLS DEVELOPMENT PLAN
+Mímir - Durable Memory & Intent Capture
+================================================================================
+
+Version: 1.0
+Date: December 26, 2025
+Architecture: Parallel Schema (Independent of LangGraph orchestration)
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+Build a clean, purpose-built storage API for durable memory and intent capture,
+using PostgreSQL with pgvector as the storage layer and FastAPI as the API 
+implementation. The system will be containerized via Docker Compose.
+
+Key Decision: NOT using LangGraph's checkpointer/store as the primary data model.
+Instead, building a domain-specific schema that serves the requirements directly.
+LangGraph tables may coexist but are not coupled to our domain model.
+
+================================================================================
+SECTION 1: SYSTEM COMPONENTS
+================================================================================
+
+1.1 INFRASTRUCTURE LAYER
+-------------------------
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Docker Compose Environment                                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐      │
+│  │   PostgreSQL     │    │   FastAPI App    │    │  (Future: Redis) │      │
+│  │   + pgvector     │◄──►│   Storage API    │    │   Cache Layer    │      │
+│  │ Internal: 5432   │    │ Internal: 8000   │    │ Internal: 6379   │      │
+│  │ Host:    35432   │    │ Host:    38000   │    │ Host:    36379   │      │
+│  └──────────────────┘    └──────────────────┘    └──────────────────┘      │
+│                                   │                                         │
+│                          ┌────────▼────────┐                               │
+│                          │   Health Check  │                               │
+│                          │   /health       │                               │
+│                          └─────────────────┘                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Port Mapping Strategy:
+  - Use standard ports inside containers (Internal: 5432, 8000, 6379)
+  - Expose on uncommon host ports to avoid conflicts (prefix with 3)
+  - Host:Container mapping: 35432:5432, 38000:8000, 36379:6379
+
+1.2 APPLICATION LAYER
+----------------------
+Component                   | Responsibility
+----------------------------|------------------------------------------------
+FastAPI Application         | HTTP API layer, request validation, routing
+Pydantic Models             | Request/response schemas, domain validation
+SQLAlchemy Core + Raw SQL   | Database access - DO NOT USE ORM
+Alembic                     | Database migrations, schema versioning
+psycopg v3 (async)          | PostgreSQL driver with connection pooling
+
+CRITICAL REQUIREMENT: Do NOT use SQLAlchemy ORM.
+  - SQL is the implementation language for all database operations
+  - Use SQLAlchemy Core for table definitions and schema management only
+  - Use raw SQL queries executed via psycopg v3 for all data access
+
+Rationale:
+
+  ORMs can provide value in contexts with:
+    - Complex object graphs requiring lazy loading and relationship traversal
+    - Database portability across multiple backends
+    - Rapid prototyping where schema changes frequently
+
+  None of these apply to this API:
+    - Architecture is API-centric (Request → SQL → Response), not object-graph-centric
+    - PostgreSQL features (pgvector, FTS with tsvector, recursive CTEs, JSONB) 
+      require raw SQL or awkward ORM workarounds
+    - Schema is stable and deliberate, not rapidly evolving
+
+  In this context, ORMs add complexity without relevant compensating advantage.
+  SQL is a simple, set-oriented language designed for relational data—using it
+  directly provides clarity about what the database actually does.
+
+  Note: SQLAlchemy Core (not ORM) is retained for table definitions so Alembic
+  autogenerate continues to work for migrations.
+
+1.3 DATABASE LAYER
+-------------------
+PostgreSQL 18.1+ with Extensions:
+  - pgvector         : Vector similarity search
+  - pg_trgm          : Trigram-based text search (optional)
+  - Full-Text Search : Built-in PostgreSQL FTS
+
+================================================================================
+SECTION 2: DOMAIN SCHEMA DESIGN
+================================================================================
+
+2.1 CORE ENTITIES
+------------------
+
+ARTIFACTS
+---------
+- Primary entity for conversations, documents, notes
+- Append-only canonical content
+- Supports versioning without mutation
+
+  artifacts
+  ├── id (uuid, PK)
+  ├── artifact_type (enum: conversation, document, note)
+  ├── external_id (text, nullable) -- original source ID
+  ├── source (text) -- e.g., "chatgpt_export", "user_upload"
+  ├── created_at (timestamptz)
+  └── metadata (jsonb) -- extensible properties
+
+  artifact_versions
+  ├── id (uuid, PK)
+  ├── artifact_id (uuid, FK)
+  ├── version_number (int)
+  ├── content (text) -- canonical raw content
+  ├── content_hash (text) -- for deduplication
+  ├── created_at (timestamptz)
+  └── created_by (text) -- user or system
+
+INTENTS
+-------
+- Represent identified intentions within artifacts
+- Human or LLM-proposed
+
+  intents
+  ├── id (uuid, PK)
+  ├── intent_group_id (uuid, FK, nullable)
+  ├── statement (text)
+  ├── proposed_by (text) -- "human" or model identifier
+  ├── status (enum: proposed, accepted, rejected)
+  ├── created_at (timestamptz)
+  └── metadata (jsonb)
+
+  intent_groups
+  ├── id (uuid, PK)
+  ├── name (text, unique)
+  ├── description (text)
+  ├── status (enum: active, deprecated, merged)
+  ├── merged_into_id (uuid, FK, nullable)
+  └── created_at (timestamptz)
+
+DECISIONS
+---------
+- Recorded conclusions with rationale and status
+
+  decisions
+  ├── id (uuid, PK)
+  ├── statement (text)
+  ├── rationale (text)
+  ├── status (enum: active, superseded, tentative)
+  ├── superseded_by_id (uuid, FK, nullable)
+  ├── created_at (timestamptz)
+  └── metadata (jsonb)
+
+SPANS
+-----
+- Precise provenance pointers into artifact content
+
+  spans
+  ├── id (uuid, PK)
+  ├── artifact_version_id (uuid, FK)
+  ├── start_offset (int) -- character offset
+  ├── end_offset (int)
+  ├── span_type (text) -- e.g., "evidence", "quote", "toc_entry"
+  └── metadata (jsonb)
+
+RELATIONS
+---------
+- Typed relationships between entities
+
+  relations
+  ├── id (uuid, PK)
+  ├── source_type (text) -- entity type name
+  ├── source_id (uuid)
+  ├── relation_type (text) -- e.g., "contains", "precedes", "derived_from"
+  ├── target_type (text)
+  ├── target_id (uuid)
+  ├── created_at (timestamptz)
+  └── metadata (jsonb)
+
+PROVENANCE
+----------
+- Track how derived content was generated
+
+  provenance
+  ├── id (uuid, PK)
+  ├── target_type (text) -- what was generated
+  ├── target_id (uuid)
+  ├── model_id (text) -- e.g., "gpt-4-turbo"
+  ├── prompt_version (text)
+  ├── pipeline_version (text)
+  ├── evidence_span_ids (uuid[])
+  ├── created_at (timestamptz)
+  └── metadata (jsonb)
+
+EMBEDDINGS
+----------
+- Vector representations with explicit space provenance
+
+  embeddings
+  ├── id (uuid, PK)
+  ├── target_type (text)
+  ├── target_id (uuid)
+  ├── embedding_model (text) -- e.g., "text-embedding-3-small"
+  ├── embedding_space (text) -- logical grouping
+  ├── vector (vector) -- pgvector type
+  ├── created_at (timestamptz)
+  └── metadata (jsonb)
+
+2.2 INDEX STRATEGY
+-------------------
+
+Full-Text Search:
+  - GIN index on artifact_versions.content (tsvector)
+  - Consider pg_trgm for fuzzy matching
+
+Vector Search:
+  - HNSW index on embeddings.vector (recommended for recall/speed balance)
+  - Partition by embedding_space if multiple models used
+
+Relation Traversal:
+  - Composite indexes on (source_type, source_id) and (target_type, target_id)
+  - Recursive CTEs for multi-hop traversal
+
+================================================================================
+SECTION 3: API LAYER DESIGN
+================================================================================
+
+3.1 API STRUCTURE
+------------------
+
+/api/v1/
+├── /artifacts
+│   ├── POST   /              -- Create artifact
+│   ├── GET    /              -- List/search artifacts
+│   ├── GET    /{id}          -- Get artifact with versions
+│   ├── POST   /{id}/versions -- Add new version (append-only)
+│   └── GET    /{id}/relations -- Get related entities
+│
+├── /intents
+│   ├── POST   /              -- Create intent
+│   ├── GET    /              -- List/search intents
+│   ├── GET    /{id}          -- Get intent details
+│   ├── PATCH  /{id}          -- Update status (accept/reject)
+│   └── GET    /groups        -- List intent groups
+│
+├── /decisions
+│   ├── POST   /              -- Record decision
+│   ├── GET    /              -- List/search decisions
+│   ├── GET    /{id}          -- Get decision details
+│   └── PATCH  /{id}          -- Update status (supersede)
+│
+├── /spans
+│   ├── POST   /              -- Create span
+│   ├── GET    /              -- List spans for artifact
+│   └── GET    /{id}          -- Get span details
+│
+├── /relations
+│   ├── POST   /              -- Create relation
+│   ├── GET    /              -- Query relations
+│   └── DELETE /{id}          -- Remove relation
+│
+├── /search
+│   ├── POST   /text          -- Full-text search
+│   ├── POST   /semantic      -- Vector similarity search
+│   └── POST   /hybrid        -- Combined search
+│
+├── /provenance
+│   ├── POST   /              -- Record provenance
+│   └── GET    /{target_type}/{target_id} -- Get provenance
+│
+└── /health
+    └── GET    /              -- Health check
+
+3.2 API PATTERNS
+-----------------
+
+Request/Response:
+  - JSON bodies with Pydantic validation
+  - Consistent error response format
+  - Pagination via cursor or offset/limit
+  - Field selection via query params (sparse fieldsets)
+
+Provenance Recording:
+  - All mutating operations accept optional provenance metadata
+  - Standard header: X-Provenance-Model, X-Provenance-Pipeline
+
+Query Language:
+  - Simple filter syntax for V1 (field=value, field__op=value)
+  - Consider JQL-like or GraphQL for V2 complex queries
+
+3.3 ASYNC STRATEGY
+-------------------
+
+  - Use asyncio throughout (FastAPI native)
+  - psycopg v3 async with connection pooling
+  - Non-blocking for all I/O operations
+  - Streaming responses for large result sets (optional V2)
+
+3.4 OPENAPI DOCUMENTATION
+--------------------------
+
+FastAPI generates OpenAPI documentation automatically. Ensure full documentation:
+
+Endpoints:
+  - Swagger UI: /docs (interactive API explorer)
+  - ReDoc: /redoc (clean reference documentation)
+  - OpenAPI JSON: /openapi.json (machine-readable spec)
+
+Documentation Requirements:
+  - Every endpoint MUST have:
+    - Summary (short description in endpoint list)
+    - Description (detailed explanation of behavior)
+    - Request body schema with field descriptions
+    - Response model with field descriptions
+    - All possible response status codes documented
+    - Example request/response payloads
+  
+  - Use Pydantic Field() for field-level documentation:
+    ```python
+    class ArtifactCreate(BaseModel):
+        artifact_type: ArtifactType = Field(
+            ...,
+            description="Type of artifact being created",
+            example="conversation"
+        )
+        source: str = Field(
+            ...,
+            description="Origin of the artifact (e.g., 'chatgpt_export', 'user_upload')",
+            example="chatgpt_export"
+        )
+    ```
+
+  - Use docstrings for endpoint descriptions:
+    ```python
+    @router.post("/", response_model=Artifact, status_code=201)
+    async def create_artifact(artifact: ArtifactCreate):
+        """
+        Create a new artifact in the storage system.
+        
+        This creates the artifact metadata and its initial version (v1).
+        The content is stored append-only and cannot be modified.
+        
+        Returns the created artifact with its assigned ID.
+        """
+    ```
+
+Tags & Organization:
+  - Group endpoints by resource using OpenAPI tags
+  - Provide tag descriptions in app configuration
+  - Order tags logically (artifacts → intents → decisions → search)
+
+Versioning:
+  - API version in path prefix (/api/v1/)
+  - OpenAPI spec includes version metadata
+  - Breaking changes require new version
+
+3.5 LOGGING STRATEGY
+---------------------
+
+Structured Logging with JSON Format:
+  - All logs output as JSON for machine parsing and aggregation
+  - Use Python's structlog or standard logging with JSON formatter
+  - Avoid print statements; use proper logging levels
+
+Log Levels:
+  Level    | Usage
+  ---------|----------------------------------------------------------
+  DEBUG    | Detailed diagnostic info (SQL queries, intermediate values)
+  INFO     | Normal operations (request start/end, configuration loaded)
+  WARNING  | Unexpected but handled conditions (deprecated feature used)
+  ERROR    | Operation failed but service continues (request failed)
+  CRITICAL | Service cannot continue (database unreachable)
+
+Standard Log Fields (every log entry):
+  - timestamp (ISO 8601 format)
+  - level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  - logger (module/component name)
+  - message (human-readable description)
+  - request_id (correlation ID for request tracing)
+
+Request Context Fields (for HTTP requests):
+  - method (GET, POST, etc.)
+  - path (URL path)
+  - status_code (response status)
+  - duration_ms (request processing time)
+  - client_ip (requester IP, if available)
+
+Error Fields (for ERROR/CRITICAL):
+  - error_type (exception class name)
+  - error_message (exception message)
+  - stack_trace (full traceback for debugging)
+
+Example Log Entry:
+  {
+    "timestamp": "2025-12-26T19:30:00.000Z",
+    "level": "INFO",
+    "logger": "api.artifacts",
+    "message": "Artifact created successfully",
+    "request_id": "abc-123-def",
+    "method": "POST",
+    "path": "/api/v1/artifacts",
+    "status_code": 201,
+    "duration_ms": 45,
+    "artifact_id": "uuid-here"
+  }
+
+Configuration:
+  - Log level configurable via environment variable (LOG_LEVEL)
+  - Development: DEBUG level, pretty-printed JSON (optional)
+  - Production: INFO level, compact JSON
+
+Middleware Implementation:
+  - FastAPI middleware to:
+    - Generate request_id for each request
+    - Log request start (INFO)
+    - Log request completion with duration (INFO)
+    - Log exceptions (ERROR) with context
+  - Pass request_id to all downstream log calls
+
+Sensitive Data:
+  - NEVER log passwords, tokens, or API keys
+  - Mask or omit sensitive fields (use allowlist approach)
+  - Be cautious with user content in logs
+
+Log Aggregation (Production):
+  - Design for centralized log collection (CloudWatch, ELK, etc.)
+  - Structured JSON enables efficient querying
+  - Request IDs enable distributed tracing
+
+================================================================================
+SECTION 4: CONTAINER ARCHITECTURE
+================================================================================
+
+4.1 DOCKER COMPOSE SERVICES
+----------------------------
+
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+    image: mimir-postgres:latest  # Pre-built via BuildX cloud
+    ports: ["35432:5432"]  # Host:Container - avoid common port conflicts
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    environment:
+      POSTGRES_DB: mimir
+      POSTGRES_USER: mimir
+      POSTGRES_PASSWORD: (from .env)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mimir -d mimir"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports: ["38000:8000"]  # Host:Container - avoid common port conflicts
+    volumes:
+      - ./src:/app/src  # Hot reload in dev
+    environment:
+      DATABASE_URL: postgresql://mimir:${POSTGRES_PASSWORD}@postgres:5432/mimir  # Internal port
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+
+4.2 DOCKERFILE (MULTI-STAGE)
+-----------------------------
+
+# Build stage
+FROM python:3.13-slim as builder
+WORKDIR /app
+COPY pyproject.toml poetry.lock ./
+RUN pip install poetry && poetry export -f requirements.txt -o requirements.txt
+
+# Runtime stage
+FROM python:3.13-slim
+WORKDIR /app
+COPY --from=builder /app/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY src/ ./src/
+EXPOSE 8000
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+4.3 CONFIGURATION STRATEGY
+---------------------------
+
+Development:
+  - .env file with python-dotenv
+  - docker-compose.override.yml for hot reload
+  - Dev services auto-wire dependencies
+
+Production:
+  - Environment variables from orchestrator
+  - Secrets via Kubernetes secrets or external vault
+  - No .env file in container
+
+Profile Separation:
+  - config/development.yaml
+  - config/production.yaml
+  - Loaded based on ENVIRONMENT variable
+
+================================================================================
+SECTION 5: DEVELOPMENT WORKFLOW
+================================================================================
+
+5.1 PROJECT STRUCTURE & PYTHON BEST PRACTICES
+-----------------------------------------------
+
+LAYOUT PHILOSOPHY:
+  - Use "src layout" (PEP 517/518 compliant) for proper package isolation
+  - Separate source code from infrastructure/configuration
+  - Tests live outside src/ to avoid accidental packaging
+  - Infrastructure code (Docker, scripts) in dedicated directories
+
+WHY SRC LAYOUT?
+  - Prevents accidental imports from the working directory
+  - Forces proper package installation during development
+  - Matches how the code will be deployed (src/ contents become the package)
+  - Recommended by Python Packaging Authority (PyPA)
+
+mimirsystem/                    # Repository root
+│
+├── src/                                # SOURCES ROOT (add to PYTHONPATH)
+│   └── mimir/                  # Main package (importable name)
+│       ├── __init__.py                 # Package marker, version info
+│       ├── main.py                     # FastAPI application entry
+│       ├── config.py                   # Configuration loading
+│       ├── database.py                 # Database connection setup
+│       │
+│       ├── models/                     # SQLAlchemy Core table definitions
+│       │   ├── __init__.py
+│       │   ├── artifacts.py
+│       │   ├── intents.py
+│       │   ├── decisions.py
+│       │   ├── spans.py
+│       │   ├── relations.py
+│       │   ├── provenance.py
+│       │   └── embeddings.py
+│       │
+│       ├── schemas/                    # Pydantic request/response models
+│       │   ├── __init__.py
+│       │   ├── artifacts.py
+│       │   ├── intents.py
+│       │   └── ...
+│       │
+│       ├── routers/                    # FastAPI route handlers
+│       │   ├── __init__.py
+│       │   ├── artifacts.py
+│       │   ├── intents.py
+│       │   ├── search.py
+│       │   └── ...
+│       │
+│       ├── services/                   # Business logic layer
+│       │   ├── __init__.py
+│       │   ├── artifact_service.py
+│       │   ├── search_service.py
+│       │   └── ...
+│       │
+│       └── sql/                        # Raw SQL queries (organized by domain)
+│           ├── __init__.py
+│           ├── artifacts.sql
+│           ├── search.sql
+│           └── ...
+│
+├── tests/                              # TEST CODE (separate from src/)
+│   ├── __init__.py
+│   ├── conftest.py                     # Shared pytest fixtures
+│   │
+│   ├── unit/                           # Unit tests (fast, isolated)
+│   │   ├── __init__.py
+│   │   ├── test_schemas.py
+│   │   ├── test_services.py
+│   │   └── ...
+│   │
+│   └── integration/                    # Integration tests (with real DB)
+│       ├── __init__.py
+│       ├── test_artifacts_api.py
+│       ├── test_search_api.py
+│       └── ...
+│
+├── infrastructure/                     # INFRASTRUCTURE CODE (not Python package)
+│   ├── docker/
+│   │   ├── postgres/
+│   │   │   └── Dockerfile              # Custom PostgreSQL + pgvector
+│   │   └── api/
+│   │       └── Dockerfile              # API service (renamed from root)
+│   │
+│   └── scripts/
+│       ├── build-images.sh             # BuildX cloud build script
+│       └── init-dev.sh                 # Development environment setup
+│
+├── migrations/                         # Alembic migrations
+│   ├── versions/
+│   ├── env.py
+│   └── alembic.ini
+│
+├── init-scripts/                       # PostgreSQL init scripts
+│   └── 01-create-extensions.sql
+│
+├── config/                             # Environment configurations
+│   ├── development.yaml
+│   └── production.yaml
+│
+├── docker-compose.yaml                 # Service orchestration
+├── docker-compose.override.yaml        # Dev overrides (hot reload, etc.)
+├── pyproject.toml                      # Project metadata & dependencies
+├── poetry.lock                         # Locked dependencies
+├── .env.example                        # Environment template
+├── .gitignore
+└── README.md
+
+IMPORT STRATEGY:
+  - During development: Add src/ to PYTHONPATH
+  - Use absolute imports from package root:
+      from mimir.models.artifacts import Artifact
+      from mimir.services.artifact_service import create_artifact
+  - NEVER use relative imports (from ..models import X)
+  - NEVER use src. prefix in imports
+
+PYPROJECT.TOML CONFIGURATION:
+  ```toml
+  [tool.poetry]
+  name = "mimir"
+  packages = [{include = "mimir", from = "src"}]
+  
+  [tool.pytest.ini_options]
+  pythonpath = ["src"]
+  testpaths = ["tests"]
+  
+  [tool.mypy]
+  mypy_path = "src"
+  ```
+
+DEVELOPMENT SETUP:
+  ```bash
+  # Install in editable mode (Poetry handles src layout)
+  poetry install
+  
+  # Or manually set PYTHONPATH
+  export PYTHONPATH="${PWD}/src:${PYTHONPATH}"
+  ```
+
+5.2 MIGRATION STRATEGY
+-----------------------
+
+Tool: Alembic (SQLAlchemy migrations)
+
+Workflow:
+  1. Define model changes in src/models/
+  2. Generate migration: alembic revision --autogenerate -m "description"
+  3. Review and edit generated migration
+  4. Apply: alembic upgrade head
+
+Initial Setup:
+  - init-scripts/01-create-extensions.sql creates pgvector extension
+  - First Alembic migration creates all domain tables
+
+5.3 TESTING STRATEGY
+---------------------
+
+Unit Tests:
+  - Test service layer with mocked database
+  - Test Pydantic schemas validation
+  - pytest + pytest-asyncio
+
+Integration Tests:
+  - Testcontainers for PostgreSQL
+  - Full API endpoint testing
+  - pytest + httpx (async client)
+
+Test Database:
+  - Ephemeral container per test session
+  - Migrations applied automatically
+  - Data fixtures via factories
+
+================================================================================
+SECTION 6: IMPLEMENTATION PHASES
+================================================================================
+
+PHASE 1: Foundation (Week 1)
+----------------------------
+[ ] Project scaffolding (poetry, src layout)
+[ ] Docker Compose with PostgreSQL + pgvector
+[ ] Database connection setup (psycopg v3 async)
+[ ] Alembic initialization
+[ ] Health check endpoint
+[ ] CI pipeline stub
+
+PHASE 2: Core Entities (Week 2)
+-------------------------------
+[ ] Artifacts model + migration
+[ ] Artifact versions (append-only)
+[ ] Basic CRUD endpoints for artifacts
+[ ] Pydantic schemas
+[ ] Unit tests for artifact service
+
+PHASE 3: Intent & Decisions (Week 3)
+-------------------------------------
+[ ] Intents model + migration
+[ ] Intent groups
+[ ] Decisions model + migration
+[ ] CRUD endpoints for intents and decisions
+[ ] Status transitions (accept, reject, supersede)
+
+PHASE 4: Spans & Relations (Week 4)
+------------------------------------
+[ ] Spans model + migration
+[ ] Relations model + migration
+[ ] Relation query API
+[ ] Multi-hop traversal queries
+[ ] Integration tests
+
+PHASE 5: Search & Embeddings (Week 5)
+--------------------------------------
+[ ] Embeddings model + migration
+[ ] pgvector index setup (HNSW)
+[ ] Full-text search endpoint
+[ ] Semantic search endpoint
+[ ] Hybrid search endpoint
+
+PHASE 6: Provenance & Polish (Week 6)
+--------------------------------------
+[ ] Provenance model + migration
+[ ] Provenance recording API
+[ ] OpenAPI documentation cleanup
+[ ] Error handling standardization
+[ ] Performance testing
+
+================================================================================
+SECTION 7: TOOLS & DEPENDENCIES
+================================================================================
+
+7.1 PYTHON DEPENDENCIES
+------------------------
+
+VERSIONING POLICY (Development Phase):
+  Do NOT lock specific versions during development. Use flexible version specs
+  (e.g., "fastapi" not "fastapi==0.115.0") to receive incoming fixes, security
+  patches, and advances in programming models.
+  
+  Lock versions only when moving to QA or Production to ensure reproducibility.
+  
+  This applies especially to rapidly-evolving libraries:
+    - fastapi, pydantic, sqlalchemy, psycopg (v3)
+
+Core:
+  - fastapi
+  - uvicorn[standard]
+  - pydantic
+  - pydantic-settings
+  
+Database:
+  - sqlalchemy
+  - psycopg[binary,pool]  # v3
+  - alembic
+  - pgvector
+
+Development:
+  - pytest
+  - pytest-asyncio
+  - httpx
+  - testcontainers
+  - black, ruff, mypy
+
+7.2 DATABASE IMAGE
+-------------------
+
+Build custom PostgreSQL image from official base + pgvector extension.
+Do NOT use pgvector/pgvector community image—prefer official postgres for
+better security update cadence and version control.
+
+Dockerfile (docker/postgres/Dockerfile):
+  ```dockerfile
+  FROM postgres:18
+  
+  # Install pgvector extension
+  RUN apt-get update && \
+      apt-get install -y --no-install-recommends postgresql-18-pgvector && \
+      rm -rf /var/lib/apt/lists/*
+  ```
+
+Build with Docker BuildX:
+  - Use BuildX for multi-architecture support (arm64/amd64)
+  - Builder name configured via environment variable
+  
+  ```bash
+  # Set your builder name in .env (not committed to git)
+  # DOCKER_BUILDX_BUILDER=your-builder-name
+  
+  docker buildx use ${DOCKER_BUILDX_BUILDER}
+  docker buildx build --builder ${DOCKER_BUILDX_BUILDER} \
+    --platform linux/amd64,linux/arm64 \
+    -t mimir-postgres:latest \
+    -f infrastructure/docker/postgres/Dockerfile \
+    --load .
+  ```
+
+Init Script (init-scripts/01-create-extensions.sql):
+  ```sql
+  CREATE EXTENSION IF NOT EXISTS vector;
+  CREATE EXTENSION IF NOT EXISTS pg_trgm;  -- optional, for fuzzy text search
+  ```
+
+Version Strategy:
+  - Using PostgreSQL 18 (latest)
+  - Update base image tag as new versions release
+  - pgvector installed via apt tracks PostgreSQL version
+
+7.3 DEVELOPMENT TOOLS
+----------------------
+
+- Poetry: Dependency management
+- Docker/Docker Compose: Local development
+- Alembic: Migrations
+- pytest: Testing
+- httpx: Async HTTP client for tests
+- black: Code formatting
+- ruff: Fast linting
+- mypy: Type checking (pragmatic approach)
+
+================================================================================
+SECTION 8: DELIVERABLES CHECKLIST
+================================================================================
+
+[ ] Component Diagram (architecture visualization)
+[ ] Data Model Diagram (ERD for all entities)
+[ ] OpenAPI Spec Draft (generated from FastAPI)
+[ ] Docker Compose Spec (complete compose file)
+[ ] Decision Log (design_decisions.md)
+[ ] README with setup instructions
+[ ] Initial working API with health endpoint
+
+================================================================================
+END OF DOCUMENT
+================================================================================
