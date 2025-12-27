@@ -49,7 +49,21 @@
   - [x] API routers (/api/v1/spans, /api/v1/relations)
   - [x] Entity relations endpoint for graph queries
   - [x] Linting and tests passing
-- [ ] Phase 5: Search & Embeddings - pgvector, FTS, semantic search
+- [x] Phase 5: Search & Embeddings ✅
+  - [x] Migration 007: embeddings table with vector(3072), embedding_model enum
+  - [x] Full-text search columns (search_vector) added to artifacts and artifact_versions
+  - [x] HNSW index for approximate nearest neighbor search (cosine similarity)
+  - [x] GIN indexes for full-text search
+  - [x] Pydantic schemas (embedding.py, search.py)
+  - [x] Services (embedding_service.py, search_service.py)
+  - [x] OpenAI embedding integration (text-embedding-3-small/large, ada-002)
+  - [x] Semantic search with pgvector cosine distance
+  - [x] Full-text search with tsvector/tsquery
+  - [x] Hybrid search with Reciprocal Rank Fusion (RRF)
+  - [x] Similar artifacts search
+  - [x] API routers (/api/v1/search, /api/v1/embeddings)
+  - [x] Configuration: OPENAI_API_KEY, DEFAULT_EMBEDDING_MODEL
+  - [x] Linting and tests passing
 - [ ] Phase 6: Provenance & Polish - Provenance recording, documentation
 
 ## Conventions
@@ -141,3 +155,31 @@ See `.env.example` for the template with all required variables:
 - `parent_of` / `child_of` - Hierarchical relationships
 - `implements` - Source implements target (decision→intent)
 - `resolves` - Source resolves target (decision→intent)
+
+## Phase 5 API Summary
+
+### Search
+- `POST /api/v1/search` - Unified search (semantic, fulltext, or hybrid)
+- `POST /api/v1/search/semantic` - Vector similarity search via pgvector
+- `POST /api/v1/search/fulltext` - PostgreSQL full-text search
+- `POST /api/v1/search/similar` - Find artifacts similar to a given artifact
+
+### Embeddings
+- `POST /api/v1/embeddings` - Create embedding for an artifact
+- `POST /api/v1/embeddings/batch` - Batch create embeddings for multiple artifacts
+- `GET /api/v1/embeddings` - List embeddings (paginated, filter by artifact/model)
+- `GET /api/v1/embeddings/{id}` - Get embedding by ID
+- `DELETE /api/v1/embeddings/{id}` - Delete embedding
+- `DELETE /api/v1/embeddings/artifact/{id}` - Delete all embeddings for an artifact
+
+### Embedding Models
+- `openai-text-embedding-3-small` (1536 dimensions) - Default
+- `openai-text-embedding-3-large` (3072 dimensions)
+- `openai-text-embedding-ada-002` (1536 dimensions, legacy)
+- `sentence-transformers-all-mpnet` (768 dimensions) - Future
+- `sentence-transformers-all-minilm` (384 dimensions) - Future
+
+### Search Types
+- `semantic` - Vector similarity using cosine distance with HNSW index
+- `fulltext` - PostgreSQL tsvector/tsquery with GIN index
+- `hybrid` - Combined using Reciprocal Rank Fusion (RRF, k=60)

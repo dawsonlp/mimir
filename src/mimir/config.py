@@ -6,7 +6,7 @@ All secrets are validated at startup to fail fast on misconfiguration.
 
 from functools import lru_cache
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,6 +53,27 @@ class Settings(BaseSettings):
         description="API version",
     )
 
+    # Embedding settings
+    openai_api_key: SecretStr | None = Field(
+        default=None,
+        description="OpenAI API key for embeddings (required for OpenAI models)",
+    )
+    default_embedding_model: str = Field(
+        default="openai-text-embedding-3-small",
+        description="Default embedding model to use",
+    )
+    embedding_batch_size: int = Field(
+        default=100,
+        ge=1,
+        le=2048,
+        description="Maximum batch size for embedding generation",
+    )
+    embedding_max_tokens: int = Field(
+        default=8191,
+        ge=1,
+        description="Maximum tokens per text for embedding (model-specific)",
+    )
+
     @field_validator("postgres_password")
     @classmethod
     def validate_password_strength(cls, v: SecretStr) -> SecretStr:
@@ -91,6 +112,35 @@ class Settings(BaseSettings):
         if v.upper() not in valid_levels:
             raise ValueError(f"LOG_LEVEL must be one of: {', '.join(valid_levels)}")
         return v.upper()
+
+    @field_validator("default_embedding_model")
+    @classmethod
+    def validate_embedding_model(cls, v: str) -> str:
+        """Validate embedding model is supported."""
+        valid_models = {
+            "openai-text-embedding-3-small",
+            "openai-text-embedding-3-large",
+            "openai-text-embedding-ada-002",
+            "sentence-transformers-all-mpnet",
+            "sentence-transformers-all-minilm",
+        }
+        if v not in valid_models:
+            raise ValueError(f"DEFAULT_EMBEDDING_MODEL must be one of: {', '.join(valid_models)}")
+        return v
+
+    @model_validator(mode="after")
+    def validate_openai_key_if_needed(self) -> "Settings":
+        """Validate OpenAI API key is present if using OpenAI models."""
+        if self.default_embedding_model.startswith("openai-") and not self.openai_api_key:
+            # Only warn, don't fail - allows app to start without embeddings
+            import warnings
+
+            warnings.warn(
+                "OPENAI_API_KEY not set but default embedding model is OpenAI. "
+                "Embedding generation will fail without a valid API key.",
+                stacklevel=2,
+            )
+        return self
 
 
 @lru_cache

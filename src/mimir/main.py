@@ -15,7 +15,15 @@ from fastapi.responses import JSONResponse
 
 from mimir.config import get_settings
 from mimir.database import close_pool, health_check, init_pool
-from mimir.routers import artifacts, decisions, intents, relations, spans, tenants
+from mimir.routers import (
+    artifacts,
+    decisions,
+    intents,
+    relations,
+    search,
+    spans,
+    tenants,
+)
 
 
 def configure_logging(log_level: str) -> None:
@@ -185,6 +193,7 @@ def create_app() -> FastAPI:
     app.include_router(decisions.router, prefix="/api/v1")
     app.include_router(spans.router, prefix="/api/v1")
     app.include_router(relations.router, prefix="/api/v1")
+    app.include_router(search.router, prefix="/api/v1")
 
     return app
 
