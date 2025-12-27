@@ -481,20 +481,54 @@ volumes:
 4.2 DOCKERFILE (MULTI-STAGE)
 -----------------------------
 
+SECURITY: Docker images MUST NOT contain any secrets, passwords, or credentials.
+  - All secrets injected at runtime via environment variables
+  - No .env files copied into images
+  - No hardcoded connection strings
+  - Build args should never contain secrets (they are stored in image layers)
+
+```dockerfile
 # Build stage
 FROM python:3.13-slim as builder
 WORKDIR /app
+
+# Copy only dependency files first (better caching)
 COPY pyproject.toml poetry.lock ./
 RUN pip install poetry && poetry export -f requirements.txt -o requirements.txt
 
 # Runtime stage
 FROM python:3.13-slim
 WORKDIR /app
+
+# Install dependencies
 COPY --from=builder /app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code only (no config files with secrets)
 COPY src/ ./src/
+
+# No default environment variables with secrets
+# All credentials provided at runtime via docker-compose or orchestrator
+
 EXPOSE 8000
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "mimir.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+.dockerignore (required):
+```
+.env
+.env.*
+*.env
+**/.env
+.git
+.gitignore
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+*.log
+postgres_data/
+```
 
 4.3 CONFIGURATION STRATEGY
 ---------------------------
