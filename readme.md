@@ -33,7 +33,7 @@ Mímir is designed as a **storage backend for RAG systems** with multiple client
 |---------|--------------------------|-------|
 | Vector storage | ✅ | ✅ |
 | Metadata filtering | ✅ | ✅ |
-| Hybrid search | Some | ✅ RRF fusion |
+| Hybrid search | Some | ✅ RRF fusion* |
 | Managed hosting | ✅ | Self-hosted |
 | Production scale | ✅ Battle-tested | Newer |
 
@@ -75,6 +75,27 @@ Standard RAG systems store documents. Mímir stores **knowledge with provenance*
 - What contradicts what?
 
 See [design_decisions.md](design_decisions.md) for architectural decisions including DD-007 (Chunking Strategy) and DD-008 (Search Filters).
+
+#### *What is RRF (Reciprocal Rank Fusion)?
+
+RRF is a technique for combining results from multiple search methods (semantic + full-text) into a single ranked list. The challenge: semantic search returns similarity scores (0.0-1.0) while full-text search returns relevance ranks (arbitrary numbers)—these can't be directly added.
+
+RRF solves this by using **rank positions** instead of raw scores:
+
+```
+RRF_score = Σ (1 / (k + rank))
+```
+
+Where `k=60` (constant to prevent over-weighting top results) and `rank` = position in each result list.
+
+**Example**: A document ranking #2 in semantic and #5 in full-text gets:
+- Semantic: `1/(60+2) = 0.0161`
+- Full-text: `1/(60+5) = 0.0154`
+- **Combined: 0.0315**
+
+This beats a document ranking #1 in only one method (0.0164), because appearing in **both** result sets indicates higher overall relevance.
+
+Hybrid search via RRF typically outperforms either method alone—semantic catches meaning but misses exact terms; full-text catches exact matches but misses synonyms.
 
 ## Architecture
 
