@@ -1,6 +1,13 @@
-"""Tenant API endpoints."""
+"""Tenant API endpoints.
 
-from fastapi import APIRouter, HTTPException, Query
+Tenants provide multi-tenant data isolation in Mímir. Each tenant represents
+a separate context (environment, project, or experiment) with complete data isolation.
+
+Entity Relationships:
+- All entities (Artifacts, Intents, Decisions, etc.) belong to exactly one Tenant
+- Tenant ID is passed via X-Tenant-ID header on every API call
+- Deleting a tenant is restricted if it has dependent data
+"""
 
 from mimir.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
 from mimir.services import tenant_service

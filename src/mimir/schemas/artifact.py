@@ -18,8 +18,21 @@ class ArtifactBase(BaseModel):
     """Base artifact fields."""
 
     artifact_type: ArtifactType
-    source: str = Field(..., min_length=1, max_length=255)
-    external_id: str | None = None
+    source: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="General source category (e.g., file, api, import)",
+    )
+    source_system: str | None = Field(
+        default=None,
+        max_length=255,
+        description="External system identifier (e.g., chatgpt, notion, github) for external_id provenance",
+    )
+    external_id: str | None = Field(
+        default=None,
+        description="Original ID in the source_system (e.g., ChatGPT conversation UUID)",
+    )
     title: str | None = None
     metadata: dict = Field(default_factory=dict)
 

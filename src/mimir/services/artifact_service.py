@@ -33,15 +33,16 @@ async def create_artifact(
         result = await conn.execute(
             f"""
             INSERT INTO {SCHEMA_NAME}.artifacts
-                (tenant_id, artifact_type, source, external_id, title, metadata)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            RETURNING id, tenant_id, artifact_type, source, external_id, title,
+                (tenant_id, artifact_type, source, source_system, external_id, title, metadata)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id, tenant_id, artifact_type, source, source_system, external_id, title,
                       metadata, created_at, updated_at
             """,
             (
                 tenant_id,
                 data.artifact_type.value,
                 data.source,
+                data.source_system,
                 data.external_id,
                 data.title,
                 Json(data.metadata),
@@ -68,11 +69,12 @@ async def create_artifact(
         tenant_id=artifact_row[1],
         artifact_type=artifact_row[2],
         source=artifact_row[3],
-        external_id=artifact_row[4],
-        title=artifact_row[5],
-        metadata=artifact_row[6],
-        created_at=artifact_row[7],
-        updated_at=artifact_row[8],
+        source_system=artifact_row[4],
+        external_id=artifact_row[5],
+        title=artifact_row[6],
+        metadata=artifact_row[7],
+        created_at=artifact_row[8],
+        updated_at=artifact_row[9],
     )
     version = ArtifactVersionResponse(
         id=version_row[0],
@@ -92,7 +94,7 @@ async def get_artifact(artifact_id: int, tenant_id: int) -> ArtifactDetailRespon
     async with get_connection() as conn:
         result = await conn.execute(
             f"""
-            SELECT a.id, a.tenant_id, a.artifact_type, a.source, a.external_id,
+            SELECT a.id, a.tenant_id, a.artifact_type, a.source, a.source_system, a.external_id,
                    a.title, a.metadata, a.created_at, a.updated_at,
                    v.id, v.artifact_id, v.version_number, v.content, v.content_hash,
                    v.created_at, v.created_by
@@ -116,23 +118,24 @@ async def get_artifact(artifact_id: int, tenant_id: int) -> ArtifactDetailRespon
         tenant_id=row[1],
         artifact_type=row[2],
         source=row[3],
-        external_id=row[4],
-        title=row[5],
-        metadata=row[6],
-        created_at=row[7],
-        updated_at=row[8],
+        source_system=row[4],
+        external_id=row[5],
+        title=row[6],
+        metadata=row[7],
+        created_at=row[8],
+        updated_at=row[9],
     )
 
     latest_version = None
-    if row[9]:  # version exists
+    if row[10]:  # version exists
         latest_version = ArtifactVersionResponse(
-            id=row[9],
-            artifact_id=row[10],
-            version_number=row[11],
-            content=row[12],
-            content_hash=row[13],
-            created_at=row[14],
-            created_by=row[15],
+            id=row[10],
+            artifact_id=row[11],
+            version_number=row[12],
+            content=row[13],
+            content_hash=row[14],
+            created_at=row[15],
+            created_by=row[16],
         )
 
     return ArtifactDetailResponse(**artifact.model_dump(), latest_version=latest_version)
@@ -166,7 +169,7 @@ async def list_artifacts(
         # Get page of artifacts
         result = await conn.execute(
             f"""
-            SELECT id, tenant_id, artifact_type, source, external_id,
+            SELECT id, tenant_id, artifact_type, source, source_system, external_id,
                    title, metadata, created_at, updated_at
             FROM {SCHEMA_NAME}.artifacts a
             {where_clause}
@@ -183,11 +186,12 @@ async def list_artifacts(
             tenant_id=row[1],
             artifact_type=row[2],
             source=row[3],
-            external_id=row[4],
-            title=row[5],
-            metadata=row[6],
-            created_at=row[7],
-            updated_at=row[8],
+            source_system=row[4],
+            external_id=row[5],
+            title=row[6],
+            metadata=row[7],
+            created_at=row[8],
+            updated_at=row[9],
         )
         for row in rows
     ]
@@ -224,7 +228,7 @@ async def update_artifact(
             UPDATE {SCHEMA_NAME}.artifacts
             SET {", ".join(updates)}
             WHERE id = %s AND tenant_id = %s
-            RETURNING id, tenant_id, artifact_type, source, external_id,
+            RETURNING id, tenant_id, artifact_type, source, source_system, external_id,
                       title, metadata, created_at, updated_at
             """,
             params,
@@ -240,11 +244,12 @@ async def update_artifact(
         tenant_id=row[1],
         artifact_type=row[2],
         source=row[3],
-        external_id=row[4],
-        title=row[5],
-        metadata=row[6],
-        created_at=row[7],
-        updated_at=row[8],
+        source_system=row[4],
+        external_id=row[5],
+        title=row[6],
+        metadata=row[7],
+        created_at=row[8],
+        updated_at=row[9],
     )
 
 
@@ -253,7 +258,7 @@ async def _get_artifact_basic(artifact_id: int, tenant_id: int) -> ArtifactRespo
     async with get_connection() as conn:
         result = await conn.execute(
             f"""
-            SELECT id, tenant_id, artifact_type, source, external_id,
+            SELECT id, tenant_id, artifact_type, source, source_system, external_id,
                    title, metadata, created_at, updated_at
             FROM {SCHEMA_NAME}.artifacts
             WHERE id = %s AND tenant_id = %s
@@ -270,11 +275,12 @@ async def _get_artifact_basic(artifact_id: int, tenant_id: int) -> ArtifactRespo
         tenant_id=row[1],
         artifact_type=row[2],
         source=row[3],
-        external_id=row[4],
-        title=row[5],
-        metadata=row[6],
-        created_at=row[7],
-        updated_at=row[8],
+        source_system=row[4],
+        external_id=row[5],
+        title=row[6],
+        metadata=row[7],
+        created_at=row[8],
+        updated_at=row[9],
     )
 
 
