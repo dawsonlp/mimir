@@ -122,6 +122,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
             EmbeddingModelInfo(
                 model_id=model_id,
                 provider="ollama",
+                display_name=model_id.replace("-", " ").title(),
                 dimensions=spec["dimensions"],
                 max_tokens=spec["max_tokens"],
                 description=spec["description"],
@@ -135,6 +136,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         return EmbeddingModelInfo(
             model_id=model_id,
             provider="ollama",
+            display_name=model_id.replace("-", " ").title(),
             dimensions=spec["dimensions"],
             max_tokens=spec["max_tokens"],
             description=spec["description"],
@@ -176,7 +178,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
 
                 return EmbeddingResult(
                     embedding=embedding,
-                    model=model_id,
+                    model_id=model_id,
                     dimensions=len(embedding),
                     tokens_used=None,  # Ollama doesn't report token usage
                 )
