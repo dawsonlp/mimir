@@ -115,6 +115,7 @@ Mímir is a **storage API only**. It deliberately does not:
 | Document | Purpose |
 |----------|---------|
 | [overview.md](overview.md) | This file - project vision |
+| [requirements.md](requirements.md) | V1-V3 roadmap, non-goals, boundaries |
 | [architecture.md](architecture.md) | Core principles, entity model |
 | [data-model.md](data-model.md) | Database tables and columns |
 | [api-design.md](api-design.md) | REST endpoint specification |
