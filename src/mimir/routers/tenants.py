@@ -9,6 +9,8 @@ Entity Relationships:
 - Deleting a tenant is restricted if it has dependent data
 """
 
+from fastapi import APIRouter, HTTPException, Query
+
 from mimir.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
 from mimir.services import tenant_service
 
