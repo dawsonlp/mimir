@@ -5,8 +5,6 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-from mimir.schemas.embedding import EmbeddingModel
-
 
 class SearchType(str, Enum):
     """Type of search to perform."""
@@ -23,9 +21,9 @@ class SearchRequest(BaseModel):
     search_type: SearchType = Field(
         default=SearchType.HYBRID, description="Type of search to perform"
     )
-    model: EmbeddingModel = Field(
-        default=EmbeddingModel.OPENAI_TEXT_EMBEDDING_3_SMALL,
-        description="Embedding model for semantic search",
+    model: str | None = Field(
+        default=None,
+        description="Embedding model for semantic search (e.g., 'voyage-3', 'text-embedding-3-small'). Uses configured default if not specified.",
     )
     limit: int = Field(default=20, ge=1, le=100, description="Maximum results to return")
     offset: int = Field(default=0, ge=0, description="Offset for pagination")
@@ -47,9 +45,9 @@ class SemanticSearchRequest(BaseModel):
     """Schema for semantic-only search request."""
 
     query: str = Field(..., min_length=1, max_length=10000, description="Search query")
-    model: EmbeddingModel = Field(
-        default=EmbeddingModel.OPENAI_TEXT_EMBEDDING_3_SMALL,
-        description="Embedding model to use",
+    model: str | None = Field(
+        default=None,
+        description="Embedding model to use. Uses configured default if not specified.",
     )
     limit: int = Field(default=20, ge=1, le=100, description="Maximum results to return")
     offset: int = Field(default=0, ge=0, description="Offset for pagination")
@@ -118,9 +116,9 @@ class SimilarArtifactsRequest(BaseModel):
     """Schema for finding similar artifacts."""
 
     artifact_id: int = Field(..., description="ID of the artifact to find similar to")
-    model: EmbeddingModel = Field(
-        default=EmbeddingModel.OPENAI_TEXT_EMBEDDING_3_SMALL,
-        description="Embedding model to use",
+    model: str | None = Field(
+        default=None,
+        description="Embedding model to use. Uses configured default if not specified.",
     )
     limit: int = Field(default=10, ge=1, le=50, description="Maximum results to return")
     min_similarity: float = Field(

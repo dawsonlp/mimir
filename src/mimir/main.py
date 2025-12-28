@@ -26,6 +26,13 @@ from mimir.routers import (
     spans,
     tenants,
 )
+from mimir.services.embedding_providers.ollama import OllamaEmbeddingProvider
+from mimir.services.embedding_providers.openai import OpenAIProvider
+from mimir.services.embedding_providers.registry import (
+    list_providers,
+    register_provider,
+)
+from mimir.services.embedding_providers.voyage import VoyageProvider
 
 
 def configure_logging(log_level: str) -> None:
@@ -88,6 +95,18 @@ async def lifespan(app: FastAPI):
     # Initialize database pool
     await init_pool()
     await logger.ainfo("Database connection pool initialized")
+
+    # Register embedding providers (order matters for default selection)
+    # 1. Voyage AI - preferred when configured (Anthropic recommended)
+    # 2. OpenAI - fallback for cloud embeddings
+    # 3. Ollama - local embeddings, no API key needed
+    register_provider(VoyageProvider())
+    register_provider(OpenAIProvider())
+    register_provider(OllamaEmbeddingProvider())
+    await logger.ainfo(
+        "Embedding providers registered",
+        providers=list_providers(),
+    )
 
     yield
 

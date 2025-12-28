@@ -54,13 +54,22 @@ class Settings(BaseSettings):
     )
 
     # Embedding settings
+    voyageai_mimir_embeddings: SecretStr | None = Field(
+        default=None,
+        description="Voyage AI API key for embeddings (Anthropic recommended)",
+    )
+
+    @property
+    def voyage_api_key(self) -> SecretStr | None:
+        """Alias for voyageai_mimir_embeddings for compatibility."""
+        return self.voyageai_mimir_embeddings
     openai_api_key: SecretStr | None = Field(
         default=None,
-        description="OpenAI API key for embeddings (required for OpenAI models)",
+        description="OpenAI API key for embeddings (optional, for OpenAI models)",
     )
-    default_embedding_model: str = Field(
-        default="openai-text-embedding-3-small",
-        description="Default embedding model to use",
+    default_embedding_model: str | None = Field(
+        default=None,
+        description="Default embedding model to use (auto-detected from configured providers if not set)",
     )
     embedding_batch_size: int = Field(
         default=100,
@@ -72,6 +81,12 @@ class Settings(BaseSettings):
         default=8191,
         ge=1,
         description="Maximum tokens per text for embedding (model-specific)",
+    )
+
+    # Ollama settings (local embeddings)
+    ollama_base_url: str = Field(
+        default="http://localhost:11434",
+        description="Ollama server URL for local embeddings",
     )
 
     @field_validator("postgres_password")
@@ -113,33 +128,59 @@ class Settings(BaseSettings):
             raise ValueError(f"LOG_LEVEL must be one of: {', '.join(valid_levels)}")
         return v.upper()
 
-    @field_validator("default_embedding_model")
-    @classmethod
-    def validate_embedding_model(cls, v: str) -> str:
-        """Validate embedding model is supported."""
-        valid_models = {
-            "openai-text-embedding-3-small",
-            "openai-text-embedding-3-large",
-            "openai-text-embedding-ada-002",
-            "sentence-transformers-all-mpnet",
-            "sentence-transformers-all-minilm",
-        }
-        if v not in valid_models:
-            raise ValueError(f"DEFAULT_EMBEDDING_MODEL must be one of: {', '.join(valid_models)}")
-        return v
-
     @model_validator(mode="after")
-    def validate_openai_key_if_needed(self) -> "Settings":
-        """Validate OpenAI API key is present if using OpenAI models."""
-        if self.default_embedding_model.startswith("openai-") and not self.openai_api_key:
-            # Only warn, don't fail - allows app to start without embeddings
-            import warnings
+    def validate_embedding_configuration(self) -> "Settings":
+        """Validate embedding configuration.
 
+        At least one embedding provider should be configured for embeddings to work.
+        If default_embedding_model is set, verify the corresponding provider is configured.
+        """
+        import warnings
+
+        # Check if any embedding provider is configured
+        has_voyage = self.voyage_api_key is not None
+        has_openai = self.openai_api_key is not None
+
+        if not has_voyage and not has_openai:
             warnings.warn(
-                "OPENAI_API_KEY not set but default embedding model is OpenAI. "
-                "Embedding generation will fail without a valid API key.",
+                "No embedding API keys configured. Set VOYAGE_API_KEY or OPENAI_API_KEY "
+                "for embedding functionality.",
                 stacklevel=2,
             )
+
+        # Validate default model if explicitly set
+        if self.default_embedding_model:
+            # Voyage models
+            voyage_models = {
+                "voyage-3-large", "voyage-3", "voyage-3-lite",
+                "voyage-code-3", "voyage-finance-2", "voyage-law-2",
+                "voyage-multilingual-2",
+            }
+            # OpenAI models
+            openai_models = {
+                "text-embedding-3-small", "text-embedding-3-large",
+                "text-embedding-ada-002",
+            }
+
+            if self.default_embedding_model in voyage_models and not has_voyage:
+                warnings.warn(
+                    f"DEFAULT_EMBEDDING_MODEL is {self.default_embedding_model} but "
+                    "VOYAGE_API_KEY is not set. Embedding generation will fail.",
+                    stacklevel=2,
+                )
+            elif self.default_embedding_model in openai_models and not has_openai:
+                warnings.warn(
+                    f"DEFAULT_EMBEDDING_MODEL is {self.default_embedding_model} but "
+                    "OPENAI_API_KEY is not set. Embedding generation will fail.",
+                    stacklevel=2,
+                )
+            elif self.default_embedding_model not in voyage_models | openai_models:
+                warnings.warn(
+                    f"DEFAULT_EMBEDDING_MODEL '{self.default_embedding_model}' is not a "
+                    "recognized model. Available: Voyage AI models or OpenAI models.",
+                    stacklevel=2,
+                )
+
         return self
 
 

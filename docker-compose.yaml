@@ -32,6 +32,11 @@ services:
       DATABASE_URL: postgresql://mimir:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/mimir
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Embedding configuration
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      DEFAULT_EMBEDDING_MODEL: ${DEFAULT_EMBEDDING_MODEL:-nomic-embed-text}
+      VOYAGEAI_MIMIR_EMBEDDINGS: ${VOYAGEAI_MIMIR_EMBEDDINGS:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

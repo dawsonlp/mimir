@@ -16,11 +16,19 @@ from mimir.schemas.search import (
     SimilarArtifactsRequest,
 )
 from mimir.services.embedding_service import (
-    generate_openai_embedding,
+    _get_default_model_id,
+    generate_query_embedding,
     get_embedding_vector,
 )
 
 logger = structlog.get_logger()
+
+
+def _resolve_model(model: str | None) -> str:
+    """Resolve model to a concrete model ID, using default if None."""
+    if model is None:
+        return _get_default_model_id()
+    return model
 
 
 async def semantic_search(
@@ -38,12 +46,15 @@ async def semantic_search(
     Returns:
         Search response with ranked results
     """
-    # Generate embedding for the query
-    query_embedding = await generate_openai_embedding(request.query, request.model)
+    # Resolve model
+    model_id = _resolve_model(request.model)
 
-    # Pad to 3072 dimensions for storage compatibility
+    # Generate embedding for the query using the configured provider
+    query_embedding = await generate_query_embedding(request.query, model_id)
+
+    # Pad to max dimensions for storage compatibility
     dimensions = len(query_embedding)
-    padded_embedding = query_embedding + [0.0] * (3072 - dimensions)
+    padded_embedding = query_embedding + [0.0] * (1536 - dimensions)
 
     # Build type filter if specified
     type_filter = ""
@@ -73,7 +84,7 @@ async def semantic_search(
             AND (e.embedding <=> %s::mimirdata.vector) < %s
             {type_filter.replace("a.artifact_type::text IN", "a.artifact_type::text IN") if type_filter else ""}
             """,
-            [tenant_id, request.model.value, json.dumps(padded_embedding), distance_threshold]
+            [tenant_id, model_id, json.dumps(padded_embedding), distance_threshold]
             + (request.artifact_types if request.artifact_types else []),
         )
         total = (await count_result.fetchone())[0]
@@ -110,7 +121,7 @@ async def semantic_search(
             [
                 json.dumps(padded_embedding),
                 tenant_id,
-                request.model.value,
+                model_id,
                 json.dumps(padded_embedding),
                 distance_threshold,
             ]
@@ -140,7 +151,7 @@ async def semantic_search(
     await logger.ainfo(
         "Semantic search completed",
         query_length=len(request.query),
-        model=request.model.value,
+        model=model_id,
         results=len(items),
         total=total,
     )
@@ -340,10 +351,13 @@ async def hybrid_search(
     Returns:
         Search response with combined ranked results
     """
-    # Generate embedding for semantic search
-    query_embedding = await generate_openai_embedding(request.query, request.model)
+    # Resolve model
+    model_id = _resolve_model(request.model)
+
+    # Generate embedding for semantic search using the configured provider
+    query_embedding = await generate_query_embedding(request.query, model_id)
     dimensions = len(query_embedding)
-    padded_embedding = query_embedding + [0.0] * (3072 - dimensions)
+    padded_embedding = query_embedding + [0.0] * (1536 - dimensions)
 
     # Convert query to tsquery for FTS
     query_words = request.query.split()
@@ -448,7 +462,7 @@ async def hybrid_search(
                 json.dumps(padded_embedding),  # ORDER BY
                 json.dumps(padded_embedding),  # similarity calc
                 tenant_id,
-                request.model.value,
+                model_id,
                 json.dumps(padded_embedding),  # distance comparison
                 distance_threshold,
             ]
@@ -503,7 +517,7 @@ async def hybrid_search(
             """,
             [
                 tenant_id,
-                request.model.value,
+                model_id,
                 json.dumps(padded_embedding),
                 distance_threshold,
             ]
@@ -535,7 +549,7 @@ async def hybrid_search(
     await logger.ainfo(
         "Hybrid search completed",
         query=request.query,
-        model=request.model.value,
+        model=model_id,
         results=len(items),
         total=total,
     )
@@ -600,16 +614,19 @@ async def find_similar_artifacts(
     Returns:
         Search response with similar artifacts
     """
+    # Resolve model
+    model_id = _resolve_model(request.model)
+
     # Get the embedding for the source artifact
     embedding = await get_embedding_vector(
-        request.artifact_id, tenant_id, request.model.value
+        request.artifact_id, tenant_id, model_id
     )
 
     if not embedding:
         await logger.awarning(
             "No embedding found for artifact",
             artifact_id=request.artifact_id,
-            model=request.model.value,
+            model=model_id,
         )
         return SearchResponse(
             items=[],
@@ -621,7 +638,7 @@ async def find_similar_artifacts(
         )
 
     # Pad embedding
-    padded_embedding = embedding + [0.0] * (3072 - len(embedding))
+    padded_embedding = embedding + [0.0] * (1536 - len(embedding))
     distance_threshold = 1.0 - request.min_similarity
 
     # Content selection
@@ -659,7 +676,7 @@ async def find_similar_artifacts(
             [
                 json.dumps(padded_embedding),
                 tenant_id,
-                request.model.value,
+                model_id,
                 request.artifact_id,  # Exclude source artifact
                 json.dumps(padded_embedding),
                 distance_threshold,
@@ -690,7 +707,7 @@ async def find_similar_artifacts(
     await logger.ainfo(
         "Similar artifacts search completed",
         source_artifact=request.artifact_id,
-        model=request.model.value,
+        model=model_id,
         results=len(items),
     )
 

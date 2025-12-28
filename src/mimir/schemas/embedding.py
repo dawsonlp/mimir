@@ -1,34 +1,35 @@
 """Embedding schemas for Pydantic validation."""
 
 from datetime import datetime
-from enum import Enum
 
 from pydantic import BaseModel, Field
 
 
-class EmbeddingModel(str, Enum):
-    """Supported embedding models."""
-
-    OPENAI_TEXT_EMBEDDING_3_SMALL = "openai-text-embedding-3-small"
-    OPENAI_TEXT_EMBEDDING_3_LARGE = "openai-text-embedding-3-large"
-    OPENAI_TEXT_EMBEDDING_ADA_002 = "openai-text-embedding-ada-002"
-    SENTENCE_TRANSFORMERS_ALL_MPNET = "sentence-transformers-all-mpnet"
-    SENTENCE_TRANSFORMERS_ALL_MINILM = "sentence-transformers-all-minilm"
-
-
-# Model dimension mappings
-# Note: Database vector column is 1536 dimensions (pgvector HNSW index limit is 2000)
-# Large model (3072 dims) must use dimensions=1536 parameter to truncate
-EMBEDDING_DIMENSIONS: dict[EmbeddingModel, int] = {
-    EmbeddingModel.OPENAI_TEXT_EMBEDDING_3_SMALL: 1536,
-    EmbeddingModel.OPENAI_TEXT_EMBEDDING_3_LARGE: 1536,  # Truncated from 3072 to fit HNSW limit
-    EmbeddingModel.OPENAI_TEXT_EMBEDDING_ADA_002: 1536,
-    EmbeddingModel.SENTENCE_TRANSFORMERS_ALL_MPNET: 768,
-    EmbeddingModel.SENTENCE_TRANSFORMERS_ALL_MINILM: 384,
-}
-
 # Maximum dimensions supported by database (pgvector HNSW index limit is 2000)
 MAX_EMBEDDING_DIMENSIONS = 1536
+
+
+class EmbeddingModelResponse(BaseModel):
+    """Schema for embedding model information."""
+
+    model_id: str = Field(..., description="Unique model identifier")
+    provider: str = Field(..., description="Provider name (e.g., 'voyage', 'openai')")
+    display_name: str = Field(..., description="Human-readable name")
+    dimensions: int = Field(..., description="Output embedding dimensions")
+    max_tokens: int = Field(..., description="Maximum input tokens")
+    description: str = Field(default="", description="Model description")
+
+
+class EmbeddingProvidersResponse(BaseModel):
+    """Schema for listing available embedding providers and models."""
+
+    providers: list[str] = Field(..., description="List of configured provider names")
+    models: list[EmbeddingModelResponse] = Field(
+        ..., description="All available models from configured providers"
+    )
+    default_model: str | None = Field(
+        None, description="Default model ID (if any provider is configured)"
+    )
 
 
 class EmbeddingCreate(BaseModel):
@@ -38,9 +39,9 @@ class EmbeddingCreate(BaseModel):
     artifact_version_id: int | None = Field(
         None, description="Optional specific version ID"
     )
-    model: EmbeddingModel = Field(
-        default=EmbeddingModel.OPENAI_TEXT_EMBEDDING_3_SMALL,
-        description="Embedding model to use",
+    model: str | None = Field(
+        default=None,
+        description="Embedding model to use (defaults to configured default)",
     )
     text: str | None = Field(
         None,
@@ -82,9 +83,9 @@ class EmbeddingBatchCreate(BaseModel):
     artifact_ids: list[int] = Field(
         ..., min_length=1, max_length=100, description="List of artifact IDs to embed"
     )
-    model: EmbeddingModel = Field(
-        default=EmbeddingModel.OPENAI_TEXT_EMBEDDING_3_SMALL,
-        description="Embedding model to use",
+    model: str | None = Field(
+        default=None,
+        description="Embedding model to use (defaults to configured default)",
     )
 
 

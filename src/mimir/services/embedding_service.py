@@ -1,128 +1,101 @@
-"""Embedding service - generate and store vector embeddings."""
+"""Embedding service - generate and store vector embeddings.
+
+Uses pluggable providers for embedding generation. Supports multiple providers
+including Voyage AI (Anthropic recommended) and OpenAI.
+"""
 
 import json
 
-import httpx
 import structlog
 
 from mimir.config import get_settings
 from mimir.database import get_connection
 from mimir.models import SCHEMA_NAME
 from mimir.schemas.embedding import (
-    EMBEDDING_DIMENSIONS,
     MAX_EMBEDDING_DIMENSIONS,
     EmbeddingBatchCreate,
     EmbeddingBatchResponse,
     EmbeddingCreate,
     EmbeddingListResponse,
-    EmbeddingModel,
+    EmbeddingModelResponse,
+    EmbeddingProvidersResponse,
     EmbeddingResponse,
+)
+from mimir.services.embedding_providers.base import EmbeddingModelInfo
+from mimir.services.embedding_providers.registry import (
+    get_default_model,
+    get_model_info,
+    get_provider_for_model,
+    list_all_models,
+    list_providers,
 )
 
 logger = structlog.get_logger()
 
-# OpenAI API endpoint
-OPENAI_EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings"
+
+def _model_info_to_response(info: EmbeddingModelInfo) -> EmbeddingModelResponse:
+    """Convert internal model info to API response schema."""
+    return EmbeddingModelResponse(
+        model_id=info.model_id,
+        provider=info.provider,
+        display_name=info.display_name,
+        dimensions=info.dimensions,
+        max_tokens=info.max_tokens,
+        description=info.description,
+    )
 
 
-async def generate_openai_embedding(
-    text: str, model: EmbeddingModel
-) -> list[float]:
-    """Generate embedding using OpenAI API.
-
-    Args:
-        text: Text to embed
-        model: OpenAI embedding model to use
-
-    Returns:
-        List of float values representing the embedding
-
-    Raises:
-        ValueError: If OpenAI API key is not configured
-        httpx.HTTPStatusError: If API request fails
-    """
-    settings = get_settings()
-    if not settings.openai_api_key:
-        raise ValueError("OPENAI_API_KEY not configured")
-
-    # Map our model enum to OpenAI model names
-    model_mapping = {
-        EmbeddingModel.OPENAI_TEXT_EMBEDDING_3_SMALL: "text-embedding-3-small",
-        EmbeddingModel.OPENAI_TEXT_EMBEDDING_3_LARGE: "text-embedding-3-large",
-        EmbeddingModel.OPENAI_TEXT_EMBEDDING_ADA_002: "text-embedding-ada-002",
-    }
-
-    openai_model = model_mapping.get(model)
-    if not openai_model:
-        raise ValueError(f"Model {model} is not an OpenAI model")
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            OPENAI_EMBEDDINGS_URL,
-            headers={
-                "Authorization": f"Bearer {settings.openai_api_key.get_secret_value()}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "input": text,
-                "model": openai_model,
-            },
-            timeout=60.0,
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["data"][0]["embedding"]
-
-
-async def generate_openai_embeddings_batch(
-    texts: list[str], model: EmbeddingModel
-) -> list[list[float]]:
-    """Generate embeddings for multiple texts using OpenAI API.
-
-    Args:
-        texts: List of texts to embed
-        model: OpenAI embedding model to use
+async def get_available_providers() -> EmbeddingProvidersResponse:
+    """Get available embedding providers and models.
 
     Returns:
-        List of embeddings (one per input text)
+        Response with providers, models, and default model info
+    """
+    providers = list_providers()
+    models = list_all_models()
+    default = get_default_model()
+
+    # If no default from providers, check settings
+    default_model_id = None
+    if default:
+        default_model_id = default.model_id
+    else:
+        settings = get_settings()
+        if settings.default_embedding_model:
+            default_model_id = settings.default_embedding_model
+
+    return EmbeddingProvidersResponse(
+        providers=providers,
+        models=[_model_info_to_response(m) for m in models],
+        default_model=default_model_id,
+    )
+
+
+def _get_default_model_id() -> str:
+    """Get the default model ID.
+
+    Checks settings first, then falls back to provider defaults.
+
+    Returns:
+        Model ID string
 
     Raises:
-        ValueError: If OpenAI API key is not configured
-        httpx.HTTPStatusError: If API request fails
+        ValueError: If no embedding providers are configured
     """
     settings = get_settings()
-    if not settings.openai_api_key:
-        raise ValueError("OPENAI_API_KEY not configured")
 
-    # Map our model enum to OpenAI model names
-    model_mapping = {
-        EmbeddingModel.OPENAI_TEXT_EMBEDDING_3_SMALL: "text-embedding-3-small",
-        EmbeddingModel.OPENAI_TEXT_EMBEDDING_3_LARGE: "text-embedding-3-large",
-        EmbeddingModel.OPENAI_TEXT_EMBEDDING_ADA_002: "text-embedding-ada-002",
-    }
+    # Check explicit setting first
+    if settings.default_embedding_model:
+        return settings.default_embedding_model
 
-    openai_model = model_mapping.get(model)
-    if not openai_model:
-        raise ValueError(f"Model {model} is not an OpenAI model")
+    # Fall back to provider default
+    default = get_default_model()
+    if default:
+        return default.model_id
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            OPENAI_EMBEDDINGS_URL,
-            headers={
-                "Authorization": f"Bearer {settings.openai_api_key.get_secret_value()}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "input": texts,
-                "model": openai_model,
-            },
-            timeout=120.0,
-        )
-        response.raise_for_status()
-        data = response.json()
-        # Sort by index to maintain order
-        embeddings = sorted(data["data"], key=lambda x: x["index"])
-        return [e["embedding"] for e in embeddings]
+    raise ValueError(
+        "No embedding model available. Configure VOYAGE_API_KEY or OPENAI_API_KEY."
+    )
 
 
 async def get_artifact_content(artifact_id: int, tenant_id: int) -> str | None:
@@ -164,8 +137,22 @@ async def create_embedding(
         Created embedding response
 
     Raises:
-        ValueError: If artifact not found or embedding generation fails
+        ValueError: If artifact not found, model not supported, or provider not configured
     """
+    # Determine model to use
+    model_id = data.model or _get_default_model_id()
+
+    # Get provider for the model
+    provider = get_provider_for_model(model_id)
+    if not provider:
+        raise ValueError(f"No provider found for model: {model_id}")
+
+    if not provider.is_configured():
+        raise ValueError(
+            f"Provider '{provider.provider_name}' is not configured. "
+            f"Set the appropriate API key environment variable."
+        )
+
     # Get text to embed
     if data.text:
         text = data.text
@@ -174,29 +161,23 @@ async def create_embedding(
         if not text:
             raise ValueError(f"Artifact {data.artifact_id} not found or has no content")
 
-    # Generate embedding based on model type
-    if data.model.value.startswith("openai-"):
-        embedding = await generate_openai_embedding(text, data.model)
-    else:
-        # For sentence-transformers models, we'd integrate with a local model
-        # For now, raise an error as we only support OpenAI
-        raise ValueError(
-            f"Model {data.model} not yet supported. Only OpenAI models are currently available."
-        )
+    # Generate embedding
+    result = await provider.generate_embedding(text, model_id)
 
-    dimensions = len(embedding)
+    dimensions = result.dimensions
 
-    # Truncate to max dimensions if needed (e.g., large model with 3072 dims)
+    # Truncate to max dimensions if needed
+    embedding = result.embedding
     if dimensions > MAX_EMBEDDING_DIMENSIONS:
         embedding = embedding[:MAX_EMBEDDING_DIMENSIONS]
         dimensions = MAX_EMBEDDING_DIMENSIONS
 
-    # Store in database
-    # Pad embedding to max dimensions (1536) for storage
-    padded_embedding = embedding + [0.0] * (MAX_EMBEDDING_DIMENSIONS - dimensions)
+    # Pad embedding to max dimensions for storage
+    padded_embedding = embedding + [0.0] * (MAX_EMBEDDING_DIMENSIONS - len(embedding))
 
+    # Store in database
     async with get_connection() as conn:
-        result = await conn.execute(
+        db_result = await conn.execute(
             f"""
             INSERT INTO {SCHEMA_NAME}.embeddings
                 (tenant_id, artifact_id, artifact_version_id, model, embedding,
@@ -215,20 +196,21 @@ async def create_embedding(
                 tenant_id,
                 data.artifact_id,
                 data.artifact_version_id,
-                data.model.value,
+                model_id,
                 json.dumps(padded_embedding),
                 dimensions,
                 data.chunk_index,
                 text[:1000] if len(text) > 1000 else text,  # Store snippet
             ),
         )
-        row = await result.fetchone()
+        row = await db_result.fetchone()
         await conn.commit()
 
     await logger.ainfo(
         "Created embedding",
         artifact_id=data.artifact_id,
-        model=data.model.value,
+        model=model_id,
+        provider=provider.provider_name,
         dimensions=dimensions,
     )
 
@@ -262,6 +244,31 @@ async def create_embeddings_batch(
     failed = 0
     errors: list[str] = []
 
+    # Determine model to use
+    model_id = data.model or _get_default_model_id()
+
+    # Get provider for the model
+    provider = get_provider_for_model(model_id)
+    if not provider:
+        return EmbeddingBatchResponse(
+            created=0,
+            failed=len(data.artifact_ids),
+            errors=[f"No provider found for model: {model_id}"],
+        )
+
+    if not provider.is_configured():
+        return EmbeddingBatchResponse(
+            created=0,
+            failed=len(data.artifact_ids),
+            errors=[
+                f"Provider '{provider.provider_name}' is not configured. "
+                f"Set the appropriate API key environment variable."
+            ],
+        )
+
+    # Get model info for dimensions
+    model_info = get_model_info(model_id)
+
     # Get content for all artifacts
     artifact_texts: list[tuple[int, str]] = []
     for artifact_id in data.artifact_ids:
@@ -282,22 +289,30 @@ async def create_embeddings_batch(
         texts = [t[1] for t in batch]
 
         try:
-            if data.model.value.startswith("openai-"):
-                embeddings = await generate_openai_embeddings_batch(texts, data.model)
+            # Use batch generation if provider supports it
+            if provider.supports_batch():
+                results = await provider.generate_embeddings_batch(texts, model_id)
             else:
-                raise ValueError(f"Model {data.model} not yet supported")
-
-            dimensions = EMBEDDING_DIMENSIONS[data.model]
+                results = []
+                for text in texts:
+                    result = await provider.generate_embedding(text, model_id)
+                    results.append(result)
 
             # Store all embeddings
             async with get_connection() as conn:
                 for idx, (artifact_id, text) in enumerate(batch):
-                    embedding = embeddings[idx]
+                    result = results[idx]
+                    embedding = result.embedding
+                    dimensions = result.dimensions
+
                     # Truncate to max dimensions if needed
                     if len(embedding) > MAX_EMBEDDING_DIMENSIONS:
                         embedding = embedding[:MAX_EMBEDDING_DIMENSIONS]
                         dimensions = MAX_EMBEDDING_DIMENSIONS
-                    padded_embedding = embedding + [0.0] * (MAX_EMBEDDING_DIMENSIONS - len(embedding))
+
+                    padded_embedding = embedding + [0.0] * (
+                        MAX_EMBEDDING_DIMENSIONS - len(embedding)
+                    )
 
                     await conn.execute(
                         f"""
@@ -315,7 +330,7 @@ async def create_embeddings_batch(
                         (
                             tenant_id,
                             artifact_id,
-                            data.model.value,
+                            model_id,
                             json.dumps(padded_embedding),
                             dimensions,
                             0,  # chunk_index
@@ -340,7 +355,8 @@ async def create_embeddings_batch(
         "Batch embedding complete",
         created=created,
         failed=failed,
-        model=data.model.value,
+        model=model_id,
+        provider=provider.provider_name,
     )
 
     return EmbeddingBatchResponse(created=created, failed=failed, errors=errors)
@@ -510,18 +526,21 @@ async def delete_embeddings_by_artifact(artifact_id: int, tenant_id: int) -> int
 
 
 async def get_embedding_vector(
-    artifact_id: int, tenant_id: int, model: str
+    artifact_id: int, tenant_id: int, model: str | None = None
 ) -> list[float] | None:
     """Get the embedding vector for an artifact.
 
     Args:
         artifact_id: ID of the artifact
         tenant_id: Tenant ID for isolation
-        model: Embedding model name
+        model: Embedding model name (defaults to configured default)
 
     Returns:
         Embedding vector or None if not found
     """
+    if model is None:
+        model = _get_default_model_id()
+
     async with get_connection() as conn:
         result = await conn.execute(
             f"""
@@ -543,3 +562,40 @@ async def get_embedding_vector(
     vector = [float(x) for x in vector_str[1:-1].split(",")]
     # Trim to actual dimensions
     return vector[:dimensions]
+
+
+async def generate_query_embedding(text: str, model: str | None = None) -> list[float]:
+    """Generate an embedding for a query text.
+
+    This is used for similarity search queries.
+
+    Args:
+        text: Query text to embed
+        model: Embedding model to use (defaults to configured default)
+
+    Returns:
+        Embedding vector
+
+    Raises:
+        ValueError: If no provider configured or model not found
+    """
+    model_id = model or _get_default_model_id()
+
+    provider = get_provider_for_model(model_id)
+    if not provider:
+        raise ValueError(f"No provider found for model: {model_id}")
+
+    if not provider.is_configured():
+        raise ValueError(
+            f"Provider '{provider.provider_name}' is not configured. "
+            f"Set the appropriate API key environment variable."
+        )
+
+    result = await provider.generate_embedding(text, model_id)
+
+    embedding = result.embedding
+    # Truncate if needed
+    if len(embedding) > MAX_EMBEDDING_DIMENSIONS:
+        embedding = embedding[:MAX_EMBEDDING_DIMENSIONS]
+
+    return embedding

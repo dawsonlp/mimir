@@ -1,4 +1,13 @@
-"""Embeddings API routes."""
+"""Embeddings API routes.
+
+Supports multiple embedding providers including:
+- Voyage AI (Anthropic recommended): voyage-3, voyage-3-large, voyage-code-3, etc.
+- OpenAI: text-embedding-3-small, text-embedding-3-large, etc.
+
+Configure providers via environment variables:
+- VOYAGE_API_KEY: For Voyage AI models
+- OPENAI_API_KEY: For OpenAI models
+"""
 
 from fastapi import APIRouter, Header, HTTPException, status
 
@@ -7,11 +16,26 @@ from mimir.schemas.embedding import (
     EmbeddingBatchResponse,
     EmbeddingCreate,
     EmbeddingListResponse,
+    EmbeddingProvidersResponse,
     EmbeddingResponse,
 )
 from mimir.services import embedding_service
 
 router = APIRouter(prefix="/embeddings", tags=["embeddings"])
+
+
+@router.get("/providers", response_model=EmbeddingProvidersResponse)
+async def list_providers() -> EmbeddingProvidersResponse:
+    """List available embedding providers and models.
+
+    Returns all configured embedding providers with their available models.
+    Use this to discover which models are available for embedding generation.
+
+    Providers include:
+    - **voyage**: Voyage AI models (Anthropic recommended) - requires VOYAGE_API_KEY
+    - **openai**: OpenAI embedding models - requires OPENAI_API_KEY
+    """
+    return await embedding_service.get_available_providers()
 
 
 @router.post("", response_model=EmbeddingResponse, status_code=status.HTTP_201_CREATED)
@@ -22,7 +46,12 @@ async def create_embedding(
     """Create an embedding for an artifact.
 
     Generates a vector embedding using the specified model and stores it.
-    Requires OPENAI_API_KEY environment variable for OpenAI models.
+
+    Supported models (use GET /providers to see configured providers):
+    - **Voyage AI**: voyage-3, voyage-3-large, voyage-3-lite, voyage-code-3, etc.
+    - **OpenAI**: text-embedding-3-small, text-embedding-3-large, text-embedding-ada-002
+
+    If no model is specified, uses the configured default model.
     """
     try:
         return await embedding_service.create_embedding(x_tenant_id, data)
@@ -41,6 +70,10 @@ async def create_embeddings_batch(
 
     Processes multiple artifacts efficiently using batched API calls.
     Returns counts of successful and failed embeddings.
+
+    Supported models (use GET /providers to see configured providers):
+    - **Voyage AI**: voyage-3, voyage-3-large, voyage-3-lite, voyage-code-3, etc.
+    - **OpenAI**: text-embedding-3-small, text-embedding-3-large, text-embedding-ada-002
     """
     return await embedding_service.create_embeddings_batch(x_tenant_id, data)
 

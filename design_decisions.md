@@ -194,3 +194,70 @@ Do NOT lock specific versions during development. Use flexible version specs (e.
 ### Implementation
 - `poetry.lock` excluded from git during development
 - Lock file generated and committed for QA/Production releases
+
+---
+
+## DD-006: Pluggable Embedding Provider Architecture
+
+**Date:** December 28, 2025  
+**Status:** Accepted  
+
+### Context
+The embedding service initially used OpenAI's embedding API exclusively with a fixed enum of model names. This had several issues:
+- Required OpenAI API key (not always available/desired)
+- Fixed set of models via Python enum
+- No support for Anthropic's recommended embedding provider (Voyage AI)
+- Model names hardcoded and inflexible
+
+### Decision
+Implement a pluggable embedding provider architecture with:
+1. **Base provider interface** (`EmbeddingProvider` ABC)
+2. **Provider registry** for dynamic registration
+3. **String-based model IDs** instead of enums for flexibility
+4. **Multiple provider support** with auto-detection
+
+### Provider Architecture
+```
+embedding_providers/
+├── __init__.py        # Exports public API
+├── base.py            # EmbeddingProvider ABC, EmbeddingResult dataclass
+├── registry.py        # Provider registration and lookup
+├── voyage.py          # Voyage AI provider (Anthropic recommended)
+└── openai.py          # OpenAI provider
+```
+
+### Provider Interface
+```python
+class EmbeddingProvider(ABC):
+    @property
+    def provider_name(self) -> str: ...
+    def list_models(self) -> list[EmbeddingModelInfo]: ...
+    def get_model_info(self, model_id: str) -> EmbeddingModelInfo | None: ...
+    async def generate_embedding(self, text: str, model_id: str) -> EmbeddingResult: ...
+    async def generate_embeddings_batch(self, texts: list[str], model_id: str) -> list[EmbeddingResult]: ...
+    def is_configured(self) -> bool: ...
+```
+
+### Available Providers
+| Provider | Models | API Key Env Var |
+|----------|--------|-----------------|
+| **Voyage AI** (preferred) | voyage-3, voyage-3-large, voyage-code-3, etc. | VOYAGE_API_KEY |
+| OpenAI | text-embedding-3-small, text-embedding-3-large | OPENAI_API_KEY |
+
+### Configuration
+- `VOYAGE_API_KEY`: Voyage AI (Anthropic's recommended provider)
+- `OPENAI_API_KEY`: OpenAI fallback
+- `DEFAULT_EMBEDDING_MODEL`: Optional explicit default (auto-detected if not set)
+
+### API Changes
+- `GET /embeddings/providers` - List available providers and models
+- Model parameter accepts string model ID (e.g., "voyage-3", "text-embedding-3-small")
+- Uses configured default if model not specified
+
+### Consequences
+- Supports multiple embedding providers out of the box
+- New providers can be added by implementing `EmbeddingProvider` interface
+- Dynamic model discovery via API
+- Voyage AI preferred when configured (Anthropic recommended)
+- Graceful fallback to any configured provider
+- No code changes needed to support new Voyage AI or OpenAI models
