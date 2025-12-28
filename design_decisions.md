@@ -261,3 +261,228 @@ class EmbeddingProvider(ABC):
 - Voyage AI preferred when configured (Anthropic recommended)
 - Graceful fallback to any configured provider
 - No code changes needed to support new Voyage AI or OpenAI models
+
+---
+
+## DD-007: Client-Side Chunking Strategy for RAG
+
+**Date:** December 28, 2025  
+**Status:** Accepted  
+
+### Context
+Mímir is designed as a storage backend for RAG (Retrieval-Augmented Generation) systems with multiple client applications. RAG systems require documents to be split into chunks for effective embedding and retrieval. Different content types require different chunking strategies:
+
+- **Code**: AST-aware, function/class boundaries
+- **Markdown**: Heading/section boundaries
+- **Conversations**: Message/turn boundaries
+- **Legal documents**: Clause-aware parsing
+- **PDFs**: Page/visual layout awareness
+
+The question: where should chunking responsibility live?
+
+### Decision
+**Chunking is the responsibility of import clients**, not the storage layer. Mímir accepts pre-chunked content as artifacts with relationships to parent documents.
+
+### Rationale
+- **Domain expertise**: Chunking strategies are content-specific knowledge the storage layer shouldn't possess
+- **Flexibility**: Import clients can use any chunking library (LangChain, LlamaIndex, custom)
+- **Separation of concerns**: Mímir stores and retrieves; clients transform
+- **No leaky abstractions**: Storage doesn't need to understand document structure
+- **Existing support**: Relations table already supports `parent_of`/`child_of` relationships
+
+### Chunking Pattern in Mímir
+
+```
+1. Client imports source document as artifact (artifact_type: "document")
+   POST /artifacts
+   {
+     "artifact_type": "document",
+     "title": "Engineering Spec v2.3",
+     "content": "<full document>",
+     "source": "import",
+     "source_system": "confluence",
+     "external_id": "PAGE-12345"
+   }
+   → Returns artifact_id: 100
+
+2. Client creates chunk artifacts (artifact_type: "chunk")
+   POST /artifacts
+   {
+     "artifact_type": "chunk",
+     "title": "Engineering Spec v2.3 - Chunk 1",
+     "content": "<chunk text>",
+     "source": "derived",
+     "source_system": "mimir",
+     "metadata": {
+       "chunk_index": 0,
+       "chunk_count": 15,
+       "token_count": 512,
+       "overlap_tokens": 50,
+       "chunking_strategy": "recursive_text_splitter"
+     }
+   }
+   → Returns artifact_id: 101
+
+3. Client creates relation (chunk → parent):
+   POST /relations
+   {
+     "source_type": "artifact",
+     "source_id": 101,
+     "target_type": "artifact",
+     "target_id": 100,
+     "relation_type": "child_of"
+   }
+
+4. Client creates embedding for chunk:
+   POST /embeddings
+   {
+     "artifact_id": 101,
+     "model": "voyage-3"
+   }
+```
+
+### Recommended Chunk Metadata Schema
+```json
+{
+  "chunk_index": 0,
+  "chunk_count": 15,
+  "token_count": 512,
+  "overlap_tokens": 50,
+  "chunking_strategy": "recursive_text_splitter",
+  "char_start": 0,
+  "char_end": 2048
+}
+```
+
+### Context Expansion Pattern
+When search returns a chunk, client retrieves parent via Relations API:
+
+```
+# Get parent document
+GET /relations?source_type=artifact&source_id=101&relation_type=child_of
+→ Returns parent artifact_id: 100
+
+# Get full parent document
+GET /artifacts/100
+
+# Get all sibling chunks for expanded context
+GET /relations?target_type=artifact&target_id=100&relation_type=child_of
+→ Returns all chunk artifact_ids: [101, 102, 103, ...]
+```
+
+### Consequences
+- Import clients must handle chunking logic (can use LangChain, LlamaIndex, etc.)
+- Chunk→parent relationships are explicit and queryable
+- Multiple chunking strategies can coexist for same source document
+- Re-chunking means creating new artifacts (old ones can be soft-deleted or retained)
+- Search returns chunks; clients resolve to parent documents as needed
+
+### Alternatives Considered
+1. **Server-side chunking service**: Rejected because storage shouldn't understand content formats
+2. **Embedding table with chunk fields**: The embeddings table has `chunk_index` and `chunk_text` but using artifacts+relations is more flexible and explicit
+3. **Separate chunks table**: Rejected in favor of unified artifact model with relations
+
+---
+
+## DD-008: Advanced Search Filters for RAG
+
+**Date:** December 28, 2025  
+**Status:** Proposed  
+
+### Context
+The current search API only supports filtering by `artifact_types`. RAG applications frequently need more granular filtering:
+- Filter by source system ("only search GitHub imports")
+- Filter by date range ("documents from last 30 days")
+- Filter by custom metadata ("only Python files")
+- Filter by source category ("only imported content")
+
+### Current State
+```python
+class SearchRequest:
+    query: str
+    artifact_types: list[str] | None  # Only filter available
+    min_similarity: float
+```
+
+### Proposed Enhancement
+Add a `filters` object to search requests:
+
+```python
+class SearchFilters(BaseModel):
+    """Filters for search queries."""
+    artifact_types: list[str] | None = None
+    source: list[str] | None = None           # ["import", "api", "derived"]
+    source_system: list[str] | None = None    # ["github", "confluence", "chatgpt"]
+    created_after: datetime | None = None
+    created_before: datetime | None = None
+    updated_after: datetime | None = None
+    updated_before: datetime | None = None
+    has_parent: bool | None = None            # Filter chunks vs standalone docs
+    parent_artifact_id: int | None = None     # Search within specific document's chunks
+    metadata_filters: dict | None = None      # {"language": "python", "author": "john"}
+
+class SearchRequest(BaseModel):
+    query: str
+    search_type: SearchType = SearchType.HYBRID
+    model: str | None = None
+    limit: int = 20
+    offset: int = 0
+    filters: SearchFilters | None = None      # New structured filters
+    min_similarity: float = 0.5
+    include_content: bool = False
+```
+
+### API Usage Examples
+
+```json
+// Search only in GitHub-imported Python code from last 30 days
+{
+  "query": "authentication error handling",
+  "filters": {
+    "source_system": ["github"],
+    "artifact_types": ["chunk"],
+    "created_after": "2024-11-28T00:00:00Z",
+    "metadata_filters": {"language": "python"}
+  }
+}
+
+// Search within a specific document's chunks
+{
+  "query": "security requirements",
+  "filters": {
+    "parent_artifact_id": 100,
+    "artifact_types": ["chunk"]
+  }
+}
+```
+
+### SQL Implementation Pattern
+Metadata filtering uses PostgreSQL JSONB containment operator:
+```sql
+WHERE metadata @> '{"language": "python"}'::jsonb
+```
+
+Date filtering:
+```sql
+WHERE created_at >= %s AND created_at <= %s
+```
+
+Source filtering:
+```sql
+WHERE source = ANY(%s) AND source_system = ANY(%s)
+```
+
+### Rationale
+- RAG systems need precise retrieval scoping
+- Reduces post-filtering in application code
+- Leverages PostgreSQL's efficient JSONB and timestamp indexes
+- Maintains backward compatibility (filters are optional)
+
+### Consequences
+- More complex SQL query building in search service
+- Need indexes on `source`, `source_system`, `created_at` columns (mostly exist)
+- May need GIN index on `metadata` column for efficient JSONB filtering
+- Search response could include applied filters for transparency
+
+### Implementation Priority
+**Phase 7** - High impact for RAG use cases, moderate implementation effort.

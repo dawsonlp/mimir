@@ -73,7 +73,18 @@
   - [x] Entity history queries
   - [x] Correlated event tracking
   - [x] Time-based and actor filtering
+  - [x] Pluggable embedding providers (DD-006)
+  - [x] Voyage AI, OpenAI, Ollama support
+  - [x] Migration 009: Ollama model support
+  - [x] Migration 010: source_system column for external key provenance
   - [x] Linting and tests passing
+- [ ] Phase 7: Advanced RAG Features (Planned)
+  - [x] DD-007: Client-side chunking strategy documented ✅
+  - [x] DD-008: Advanced search filters designed ✅
+  - [ ] Enhanced search filters implementation (source, source_system, dates, metadata)
+  - [ ] Batch embedding endpoint
+  - [ ] GIN index on metadata for JSONB filtering
+  - [ ] Search within parent document's chunks
 
 ## Conventions
 
