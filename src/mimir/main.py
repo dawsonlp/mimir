@@ -18,6 +18,7 @@ from mimir.database import close_pool, health_check, init_pool
 from mimir.routers import (
     artifacts,
     decisions,
+    embeddings,
     intents,
     provenance,
     relations,
@@ -195,6 +196,7 @@ def create_app() -> FastAPI:
     app.include_router(spans.router, prefix="/api/v1")
     app.include_router(relations.router, prefix="/api/v1")
     app.include_router(search.router, prefix="/api/v1")
+    app.include_router(embeddings.router, prefix="/api/v1")
     app.include_router(provenance.router, prefix="/api/v1")
 
     return app
