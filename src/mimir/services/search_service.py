@@ -253,10 +253,21 @@ async def fulltext_search(
 
         rank_calc = " + ".join(rank_parts)
 
-        (
-            params
-            + [tsquery] * len(rank_parts)  # For rank calculation
+        # Build params for the main query:
+        # - rank_calc placeholders (len(rank_parts) times)
+        # - ts_headline placeholder
+        # - tenant_id for WHERE
+        # - type_filter placeholders (if any)
+        # - search_clause placeholders (len(search_conditions) times)
+        # - ORDER BY rank_calc placeholders (len(rank_parts) times)
+        # - LIMIT/OFFSET
+        query_params = (
+            [tsquery] * len(rank_parts)  # For rank calculation in SELECT
+            + [tsquery]  # For ts_headline
+            + [tenant_id]  # tenant_id for WHERE
+            + (request.artifact_types if request.artifact_types else [])
             + [tsquery] * len(search_conditions)  # For WHERE clause
+            + [tsquery] * len(rank_parts)  # For ORDER BY
             + [request.limit, request.offset]
         )
 
@@ -288,14 +299,7 @@ async def fulltext_search(
             ORDER BY ({rank_calc}) DESC
             LIMIT %s OFFSET %s
             """,
-            params
-            + [tsquery] * len(rank_parts)  # For rank calculation in SELECT
-            + [tsquery]  # For ts_headline
-            + [tenant_id]  # tenant_id for WHERE
-            + (request.artifact_types if request.artifact_types else [])
-            + [tsquery] * len(search_conditions)  # For WHERE clause
-            + [tsquery] * len(rank_parts)  # For ORDER BY
-            + [request.limit, request.offset],
+            query_params,
         )
         rows = await result.fetchall()
 
