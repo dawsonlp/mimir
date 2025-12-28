@@ -2,6 +2,8 @@
 
 import hashlib
 
+from psycopg.types.json import Json
+
 from mimir.database import get_connection
 from mimir.models import SCHEMA_NAME
 from mimir.schemas.artifact import (
@@ -42,7 +44,7 @@ async def create_artifact(
                 data.source,
                 data.external_id,
                 data.title,
-                data.metadata,
+                Json(data.metadata),
             ),
         )
         artifact_row = await result.fetchone()
@@ -208,7 +210,7 @@ async def update_artifact(
         params.append(data.title)
     if data.metadata is not None:
         updates.append("metadata = %s")
-        params.append(data.metadata)
+        params.append(Json(data.metadata))
 
     if not updates:
         # Nothing to update, just fetch current
