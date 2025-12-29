@@ -151,47 +151,46 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
 
 **Legend:** `port` = copy from V1 with minimal changes, `modify` = significant changes needed
 
-- [ ] Create v2/src/mimir/ package structure
-- [ ] **database.py** (port) - Connection pool
-- [ ] **config.py** (port) - Settings
-- [ ] **main.py** (modify) - Remove intent/decision router registrations
+- [x] Create v2/src/mimir/ package structure ✅
+- [x] **database.py** (port) - Connection pool ✅
+- [x] **config.py** (port) - Settings ✅
+- [x] **main.py** (modify) - All routers registered ✅
 
 ### Services
-- [ ] **tenant_service.py** (modify) - FK to tenant_type vocabulary
-- [ ] **artifact_service.py** (modify) - FK to artifact_type vocabulary, absorbs intent/decision/span patterns
-- [ ] **artifact_type_service.py** (new) - CRUD for artifact_type vocabulary
-- [ ] **relation_service.py** (modify) - FK to relation_type vocabulary
-- [ ] **relation_type_service.py** (new) - CRUD for relation_type vocabulary
-- [ ] **embedding_service.py** (port)
-- [ ] **search_service.py** (modify) - Update entity_type references
-- [ ] **provenance_service.py** (modify) - Update entity_type enum
+- [x] **tenant_service.py** (modify) - FK to tenant_type vocabulary ✅
+- [x] **artifact_service.py** (modify) - FK to artifact_type vocabulary, absorbs intent/decision/span patterns ✅
+- [x] **artifact_type_service.py** (new) - CRUD for artifact_type vocabulary ✅
+- [x] **relation_service.py** (modify) - FK to relation_type vocabulary ✅
+- [x] **relation_type_service.py** (new) - CRUD for relation_type vocabulary ✅
+- [x] **embedding_service.py** (port) ✅
+- [x] **search_service.py** (modify) - Update entity_type references ✅
+- [x] **provenance_service.py** (modify) - Update entity_type enum ✅
 
 ### Routers
-- [ ] **tenants.py** (port)
-- [ ] **artifacts.py** (modify) - FK validation, /artifact-types endpoint
-- [ ] **artifact_types.py** (new) - CRUD for artifact_type vocabulary
-- [ ] **relations.py** (modify) - FK validation
-- [ ] **relation_types.py** (new) - CRUD for relation_type vocabulary
-- [ ] **embeddings.py** (port)
-- [ ] **search.py** (port)
-- [ ] **provenance.py** (modify) - Update entity_type enum
+- [x] **tenants.py** (port) ✅
+- [x] **artifacts.py** (modify) - FK validation, versions, hierarchy endpoints ✅
+- [x] **artifact_types.py** (new) - CRUD for artifact_type vocabulary ✅
+- [x] **relations.py** (modify) - FK validation, entity relations queries ✅
+- [x] **relation_types.py** (new) - CRUD with inverse type lookup ✅
+- [x] **embeddings.py** (port) - find_similar, delete_entity_embeddings ✅
+- [x] **search.py** (port) - fulltext, semantic, hybrid, similar_artifacts ✅
+- [x] **provenance.py** (modify) - Entity history, actor activity ✅
 
 ### Schemas (Pydantic)
-- [ ] **tenant.py** (modify) - tenant_type as TEXT
-- [ ] **artifact.py** (modify) - artifact_type as TEXT, positional columns
-- [ ] **artifact_type.py** (new) - Vocabulary schema
-- [ ] **relation.py** (modify) - relation_type as TEXT
-- [ ] **relation_type.py** (new) - Vocabulary schema with inverse_code
-- [ ] **embedding.py** (port)
-- [ ] **search.py** (port)
-- [ ] **provenance.py** (modify) - Update entity_type references
+- [x] **tenant.py** (modify) - tenant_type as TEXT ✅
+- [x] **artifact.py** (modify) - artifact_type as TEXT, positional columns ✅
+- [x] **artifact_type.py** (new) - Vocabulary schema ✅
+- [x] **relation.py** (modify) - relation_type as TEXT ✅
+- [x] **relation_type.py** (new) - Vocabulary schema with inverse_code ✅
+- [x] **embedding.py** (port) ✅
+- [x] **search.py** (port) ✅
+- [x] **provenance.py** (modify) - Update entity_type references ✅
 
 ### Embedding Providers (all port)
-- [ ] **base.py**
-- [ ] **registry.py**
-- [ ] **voyage.py**
-- [ ] **openai.py**
-- [ ] **ollama.py**
+- [x] **base.py** ✅
+- [x] **registry.py** ✅
+- [x] **openai.py** ✅
+- [x] **ollama.py** ✅
 
 ---
 
@@ -369,10 +368,17 @@ POST /api/v1/relations
 | Phase 1: Documentation | **Complete** | ▓▓▓▓▓▓▓▓▓▓ 100% |
 | Phase 2: Infrastructure | **Complete** | ▓▓▓▓▓▓▓▓▓▓ 100% |
 | Phase 3: Database Schema | **Complete** | ▓▓▓▓▓▓▓▓▓▓ 100% |
-| Phase 4: Core Implementation | Not Started | ░░░░░░░░░░ 0% |
+| Phase 4: Core Implementation | **Complete** | ▓▓▓▓▓▓▓▓▓▓ 100% |
 | Phase 5: Testing & Validation | Not Started | ░░░░░░░░░░ 0% |
 | Phase 6: Final Replacement | Not Started | ░░░░░░░░░░ 0% |
 
 **Last Updated**: December 28, 2025
+
+**Phase 4 Summary:**
+- 8 Pydantic schemas (tenant, artifact, artifact_type, relation, relation_type, embedding, search, provenance)
+- 9 services including 2 new vocabulary services (artifact_type, relation_type)
+- 8 routers including 2 new vocabulary routers
+- 4 embedding provider files (base, registry, openai, ollama)
+- FastAPI main.py with all routers registered
 
 **Note on Phase 3:** Used singular table names (artifact, not artifacts) per standard DB convention. HNSW index limited to 2000 dimensions (pgvector constraint).
