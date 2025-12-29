@@ -1,94 +1,106 @@
-"""Pydantic schemas for relation API operations."""
+"""Pydantic schemas for Relation entity - knowledge graph edges.
+
+Relations connect artifacts and artifact versions to form a knowledge graph.
+They enable lineage tracking, evidence linking, and hierarchical organization.
+
+Relation Types (with inverses):
+- references ↔ referenced_by: Citations, links
+- supports ↔ supported_by: Evidence backing claims
+- contradicts (symmetric): Conflicting information
+- derived_from ↔ source_of: Lineage tracking (e.g., decision from conversation)
+- supersedes ↔ superseded_by: Versioning of concepts
+- parent_of ↔ child_of: Hierarchical grouping
+- implements ↔ implemented_by: Requirements to solutions
+- resolves ↔ resolved_by: Questions to answers, intents to decisions
+- related_to (symmetric): General association
+
+Entity Types:
+- artifact: The main knowledge unit
+- artifact_version: Immutable snapshot of an artifact
+
+Usage Examples:
+    # Decision resolves an intent
+    POST /relations {
+        "relation_type": "resolves",
+        "source_entity_type": "artifact", "source_entity_id": 101,
+        "target_entity_type": "artifact", "target_entity_id": 50
+    }
+    
+    # Decision derived from conversation
+    POST /relations {
+        "relation_type": "derived_from",
+        "source_entity_type": "artifact", "source_entity_id": 101,
+        "target_entity_type": "artifact", "target_entity_id": 25
+    }
+    
+    # Query all relations for an artifact
+    GET /relations/artifact/101
+"""
 
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field
 
 
 class EntityType(str, Enum):
-    """Types of entities that can participate in relations."""
+    """Entity types that can participate in relations."""
 
-    artifact = "artifact"
-    artifact_version = "artifact_version"
-    intent = "intent"
-    intent_group = "intent_group"
-    decision = "decision"
-    span = "span"
+    ARTIFACT = "artifact"
+    ARTIFACT_VERSION = "artifact_version"
 
 
-class RelationType(str, Enum):
-    """Types of relationships between entities."""
+class RelationBase(BaseModel):
+    """Base schema for relation."""
 
-    references = "references"
-    supports = "supports"
-    contradicts = "contradicts"
-    derived_from = "derived_from"
-    supersedes = "supersedes"
-    related_to = "related_to"
-    parent_of = "parent_of"
-    child_of = "child_of"
-    implements = "implements"
-    resolves = "resolves"
-
-
-# ============================================================================
-# Relation Schemas
-# ============================================================================
+    relation_type: str = Field(..., description="Type from relation_type vocabulary")
+    source_entity_type: EntityType = Field(..., description="Source entity type")
+    source_entity_id: int = Field(..., description="Source entity ID")
+    target_entity_type: EntityType = Field(..., description="Target entity type")
+    target_entity_id: int = Field(..., description="Target entity ID")
+    metadata: dict | None = Field(default_factory=dict, description="Additional metadata")
 
 
 class RelationCreate(BaseModel):
-    """Schema for creating a relation."""
+    """Schema for creating a new relation."""
 
-    source_type: EntityType
-    source_id: int
-    target_type: EntityType
-    target_id: int
-    relation_type: RelationType
-    description: str | None = None
-    confidence: float | None = Field(None, ge=0.0, le=1.0)
-    metadata: dict = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def no_self_relation(self) -> "RelationCreate":
-        """Validate that source and target are not the same."""
-        if self.source_type == self.target_type and self.source_id == self.target_id:
-            raise ValueError("Cannot create a relation from an entity to itself")
-        return self
+    relation_type: str = Field(..., min_length=1, max_length=50)
+    source_entity_type: EntityType
+    source_entity_id: int
+    target_entity_type: EntityType
+    target_entity_id: int
+    metadata: dict | None = None
 
 
 class RelationUpdate(BaseModel):
     """Schema for updating a relation."""
 
-    relation_type: RelationType | None = None
-    description: str | None = None
-    confidence: float | None = Field(None, ge=0.0, le=1.0)
+    relation_type: str | None = None
     metadata: dict | None = None
 
 
-class RelationResponse(BaseModel):
-    """Schema for relation API responses."""
-
-    model_config = ConfigDict(from_attributes=True)
+class RelationResponse(RelationBase):
+    """Schema for relation response."""
 
     id: int
     tenant_id: int
-    source_type: EntityType
-    source_id: int
-    target_type: EntityType
-    target_id: int
-    relation_type: RelationType
-    description: str | None
-    confidence: float | None
     created_at: datetime
-    updated_at: datetime
-    metadata: dict
+
+    model_config = {"from_attributes": True}
 
 
 class RelationListResponse(BaseModel):
-    """Paginated list of relations."""
+    """Schema for listing relations."""
 
     items: list[RelationResponse]
     total: int
-    page: int
-    page_size: int
+
+
+class RelationQueryParams(BaseModel):
+    """Query parameters for filtering relations."""
+
+    source_entity_type: EntityType | None = None
+    source_entity_id: int | None = None
+    target_entity_type: EntityType | None = None
+    target_entity_id: int | None = None
+    relation_type: str | None = None

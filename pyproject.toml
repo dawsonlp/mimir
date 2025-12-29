@@ -1,9 +1,9 @@
 [tool.poetry]
 name = "mimir"
-version = "0.1.0"
+version = "2.0.0"
 description = "Mímir - Durable Memory & Meta-Analysis Storage System"
 authors = ["Development Team"]
-readme = "readme.md"
+readme = "docs/overview.md"
 packages = [{include = "mimir", from = "src"}]
 
 [tool.poetry.dependencies]
@@ -22,7 +22,7 @@ pgvector = "*"
 # Logging
 structlog = "*"
 
-# HTTP client for external APIs (OpenAI embeddings)
+# HTTP client for external APIs (embedding providers)
 httpx = "*"
 
 [tool.poetry.group.dev.dependencies]

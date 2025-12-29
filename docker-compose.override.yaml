@@ -1,4 +1,4 @@
-# Development overrides - hot reload and debugging
+# Mímir V2 - Development overrides - hot reload and debugging
 # This file is automatically applied with docker-compose.yaml
 
 services:

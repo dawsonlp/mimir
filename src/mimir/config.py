@@ -1,4 +1,4 @@
-"""Configuration management for Mímir.
+"""Configuration management for Mímir V2.
 
 Uses pydantic-settings for environment variable loading with validation.
 All secrets are validated at startup to fail fast on misconfiguration.
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # Database configuration
     database_url: str = Field(
         ...,
-        description="PostgreSQL connection URL (postgresql+psycopg://...)",
+        description="PostgreSQL connection URL (postgresql://...)",
     )
     postgres_password: SecretStr = Field(
         ...,
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
         description="API title for OpenAPI documentation",
     )
     api_version: str = Field(
-        default="0.1.0",
+        default="2.0.0",
         description="API version",
     )
 
@@ -63,13 +63,14 @@ class Settings(BaseSettings):
     def voyage_api_key(self) -> SecretStr | None:
         """Alias for voyageai_mimir_embeddings for compatibility."""
         return self.voyageai_mimir_embeddings
+
     openai_api_key: SecretStr | None = Field(
         default=None,
         description="OpenAI API key for embeddings (optional, for OpenAI models)",
     )
     default_embedding_model: str | None = Field(
         default=None,
-        description="Default embedding model to use (auto-detected from configured providers if not set)",
+        description="Default embedding model (auto-detected from configured providers if not set)",
     )
     embedding_batch_size: int = Field(
         default=100,
@@ -89,16 +90,16 @@ class Settings(BaseSettings):
         description="Ollama server URL for local embeddings",
     )
 
+    # CORS settings
+    cors_origins: list[str] = Field(
+        default=["*"],
+        description="Allowed CORS origins (list of URLs or '*' for all)",
+    )
+
     @field_validator("postgres_password")
     @classmethod
     def validate_password_strength(cls, v: SecretStr) -> SecretStr:
-        """Validate password meets security requirements.
-
-        Requirements:
-        - Minimum 16 characters
-        - Not the example placeholder value
-        - Not empty
-        """
+        """Validate password meets security requirements."""
         password = v.get_secret_value()
 
         if not password:
@@ -107,7 +108,6 @@ class Settings(BaseSettings):
         if len(password) < 16:
             raise ValueError("POSTGRES_PASSWORD must be at least 16 characters")
 
-        # Reject common placeholder values
         placeholder_values = {
             "your-secure-password-here",
             "changeme",
@@ -130,14 +130,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_embedding_configuration(self) -> "Settings":
-        """Validate embedding configuration.
-
-        At least one embedding provider should be configured for embeddings to work.
-        If default_embedding_model is set, verify the corresponding provider is configured.
-        """
+        """Validate embedding configuration."""
         import warnings
 
-        # Check if any embedding provider is configured
         has_voyage = self.voyage_api_key is not None
         has_openai = self.openai_api_key is not None
 
@@ -147,39 +142,6 @@ class Settings(BaseSettings):
                 "for embedding functionality.",
                 stacklevel=2,
             )
-
-        # Validate default model if explicitly set
-        if self.default_embedding_model:
-            # Voyage models
-            voyage_models = {
-                "voyage-3-large", "voyage-3", "voyage-3-lite",
-                "voyage-code-3", "voyage-finance-2", "voyage-law-2",
-                "voyage-multilingual-2",
-            }
-            # OpenAI models
-            openai_models = {
-                "text-embedding-3-small", "text-embedding-3-large",
-                "text-embedding-ada-002",
-            }
-
-            if self.default_embedding_model in voyage_models and not has_voyage:
-                warnings.warn(
-                    f"DEFAULT_EMBEDDING_MODEL is {self.default_embedding_model} but "
-                    "VOYAGE_API_KEY is not set. Embedding generation will fail.",
-                    stacklevel=2,
-                )
-            elif self.default_embedding_model in openai_models and not has_openai:
-                warnings.warn(
-                    f"DEFAULT_EMBEDDING_MODEL is {self.default_embedding_model} but "
-                    "OPENAI_API_KEY is not set. Embedding generation will fail.",
-                    stacklevel=2,
-                )
-            elif self.default_embedding_model not in voyage_models | openai_models:
-                warnings.warn(
-                    f"DEFAULT_EMBEDDING_MODEL '{self.default_embedding_model}' is not a "
-                    "recognized model. Available: Voyage AI models or OpenAI models.",
-                    stacklevel=2,
-                )
 
         return self
 
@@ -192,3 +154,7 @@ def get_settings() -> Settings:
     The application will fail to start if validation fails.
     """
     return Settings()
+
+
+# Module-level singleton for convenient import
+settings = get_settings()

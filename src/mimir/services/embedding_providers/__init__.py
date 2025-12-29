@@ -1,21 +1,33 @@
-"""Embedding providers - pluggable embedding generation backends."""
+"""Embedding providers for Mímir V2."""
 
-from mimir.services.embedding_providers.base import EmbeddingProvider
-from mimir.services.embedding_providers.ollama import OllamaEmbeddingProvider
-from mimir.services.embedding_providers.openai import OpenAIProvider
+from mimir.services.embedding_providers.base import (
+    EmbeddingModelInfo,
+    EmbeddingProvider,
+    EmbeddingResult,
+)
+from mimir.services.embedding_providers.ollama import ollama_provider
+from mimir.services.embedding_providers.openai import openai_provider
 from mimir.services.embedding_providers.registry import (
+    generate_embedding,
+    get_model_info,
     get_provider,
+    list_all_models,
     list_providers,
     register_provider,
 )
-from mimir.services.embedding_providers.voyage import VoyageProvider
+
+# Register providers
+register_provider(openai_provider)
+register_provider(ollama_provider)
 
 __all__ = [
+    "EmbeddingModelInfo",
     "EmbeddingProvider",
-    "OllamaEmbeddingProvider",
-    "OpenAIProvider",
-    "VoyageProvider",
+    "EmbeddingResult",
+    "register_provider",
     "get_provider",
     "list_providers",
-    "register_provider",
+    "list_all_models",
+    "get_model_info",
+    "generate_embedding",
 ]

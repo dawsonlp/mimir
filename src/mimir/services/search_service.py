@@ -1,725 +1,264 @@
-"""Search service - semantic, full-text, and hybrid search."""
-
-import json
-
-import structlog
+"""Search service - fulltext, semantic, and hybrid search (V2)."""
 
 from mimir.database import get_connection
-from mimir.models import SCHEMA_NAME
-from mimir.schemas.search import (
-    FulltextSearchRequest,
-    SearchRequest,
-    SearchResponse,
-    SearchResultItem,
-    SearchType,
-    SemanticSearchRequest,
-    SimilarArtifactsRequest,
-)
-from mimir.services.embedding_service import (
-    _get_default_model_id,
-    generate_query_embedding,
-    get_embedding_vector,
-)
+from mimir.schemas.artifact import ArtifactResponse
+from mimir.schemas.search import SearchResponse, SearchResult
 
-logger = structlog.get_logger()
-
-
-def _resolve_model(model: str | None) -> str:
-    """Resolve model to a concrete model ID, using default if None."""
-    if model is None:
-        return _get_default_model_id()
-    return model
-
-
-async def semantic_search(
-    tenant_id: int, request: SemanticSearchRequest
-) -> SearchResponse:
-    """Perform semantic search using vector similarity.
-
-    Uses pgvector's cosine distance operator (<=>) with HNSW index
-    for approximate nearest neighbor search.
-
-    Args:
-        tenant_id: Tenant ID for isolation
-        request: Semantic search request
-
-    Returns:
-        Search response with ranked results
-    """
-    # Resolve model
-    model_id = _resolve_model(request.model)
-
-    # Generate embedding for the query using the configured provider
-    query_embedding = await generate_query_embedding(request.query, model_id)
-
-    # Pad to max dimensions for storage compatibility
-    dimensions = len(query_embedding)
-    padded_embedding = query_embedding + [0.0] * (1536 - dimensions)
-
-    # Build type filter if specified
-    type_filter = ""
-    params: list = [tenant_id, json.dumps(padded_embedding)]
-
-    if request.artifact_types:
-        placeholders = ", ".join(["%s"] * len(request.artifact_types))
-        type_filter = f"AND a.artifact_type::text IN ({placeholders})"
-        params.extend(request.artifact_types)
-
-    # Similarity threshold (convert to distance: 1 - similarity)
-    distance_threshold = 1.0 - request.min_similarity
-    params.append(distance_threshold)
-
-    # Content selection based on include_content flag
-    content_select = "av.content" if request.include_content else "NULL"
-
-    async with get_connection() as conn:
-        # Count total matching results
-        count_result = await conn.execute(
-            f"""
-            SELECT COUNT(DISTINCT a.id)
-            FROM {SCHEMA_NAME}.embeddings e
-            JOIN {SCHEMA_NAME}.artifacts a ON e.artifact_id = a.id
-            WHERE a.tenant_id = %s
-            AND e.model = %s
-            AND (e.embedding <=> %s::mimirdata.vector) < %s
-            {type_filter.replace("a.artifact_type::text IN", "a.artifact_type::text IN") if type_filter else ""}
-            """,
-            [tenant_id, model_id, json.dumps(padded_embedding), distance_threshold]
-            + (request.artifact_types if request.artifact_types else []),
-        )
-        total = (await count_result.fetchone())[0]
-
-        # Search with vector similarity
-        result = await conn.execute(
-            f"""
-            SELECT
-                a.id as artifact_id,
-                a.artifact_type::text,
-                a.title,
-                a.source,
-                1 - (e.embedding <=> %s::mimirdata.vector) as similarity,
-                SUBSTRING(av.content, 1, 300) as snippet,
-                {content_select} as content,
-                a.created_at,
-                a.updated_at,
-                a.metadata
-            FROM {SCHEMA_NAME}.embeddings e
-            JOIN {SCHEMA_NAME}.artifacts a ON e.artifact_id = a.id
-            LEFT JOIN LATERAL (
-                SELECT content FROM {SCHEMA_NAME}.artifact_versions
-                WHERE artifact_id = a.id
-                ORDER BY version_number DESC
-                LIMIT 1
-            ) av ON true
-            WHERE a.tenant_id = %s
-            AND e.model = %s
-            AND (e.embedding <=> %s::mimirdata.vector) < %s
-            {type_filter}
-            ORDER BY e.embedding <=> %s::mimirdata.vector
-            LIMIT %s OFFSET %s
-            """,
-            [
-                json.dumps(padded_embedding),
-                tenant_id,
-                model_id,
-                json.dumps(padded_embedding),
-                distance_threshold,
-            ]
-            + (request.artifact_types if request.artifact_types else [])
-            + [json.dumps(padded_embedding), request.limit, request.offset],
-        )
-        rows = await result.fetchall()
-
-    items = [
-        SearchResultItem(
-            artifact_id=row[0],
-            artifact_type=row[1],
-            title=row[2],
-            source=row[3],
-            score=float(row[4]),  # Use similarity as score
-            similarity=float(row[4]),
-            rank=None,
-            content_snippet=row[5],
-            content=row[6],
-            created_at=row[7],
-            updated_at=row[8],
-            metadata=row[9],
-        )
-        for row in rows
-    ]
-
-    await logger.ainfo(
-        "Semantic search completed",
-        query_length=len(request.query),
-        model=model_id,
-        results=len(items),
-        total=total,
-    )
-
-    return SearchResponse(
-        items=items,
-        total=total,
-        query=request.query,
-        search_type=SearchType.SEMANTIC,
-        limit=request.limit,
-        offset=request.offset,
-    )
+SCHEMA_NAME = "mimirdata"
 
 
 async def fulltext_search(
-    tenant_id: int, request: FulltextSearchRequest
+    tenant_id: int,
+    query: str,
+    artifact_types: list[str] | None = None,
+    limit: int = 20,
+    offset: int = 0,
 ) -> SearchResponse:
-    """Perform full-text search using PostgreSQL tsvector/tsquery.
-
-    Uses GIN indexes for efficient full-text search with ranking.
-
-    Args:
-        tenant_id: Tenant ID for isolation
-        request: Full-text search request
-
-    Returns:
-        Search response with ranked results
-    """
-    # Convert query to tsquery format
-    # Split words and join with & for AND logic
-    query_words = request.query.split()
-    tsquery = " & ".join(query_words)
-
-    # Build type filter if specified
-    type_filter = ""
-    params: list = [tenant_id]
-
-    if request.artifact_types:
-        placeholders = ", ".join(["%s"] * len(request.artifact_types))
-        type_filter = f"AND a.artifact_type::text IN ({placeholders})"
-        params.extend(request.artifact_types)
-
-    # Build search conditions based on where to search
-    search_conditions = []
-    if request.search_title:
-        search_conditions.append("a.search_vector @@ to_tsquery('english', %s)")
-    if request.search_content:
-        search_conditions.append("av.search_vector @@ to_tsquery('english', %s)")
-
-    if not search_conditions:
-        # Default to both if neither specified
-        search_conditions = [
-            "a.search_vector @@ to_tsquery('english', %s)",
-            "av.search_vector @@ to_tsquery('english', %s)",
-        ]
-
-    search_clause = " OR ".join(search_conditions)
-
-    # Content selection based on include_content flag
-    content_select = "av.content" if request.include_content else "NULL"
-
+    """Full-text search using PostgreSQL FTS."""
     async with get_connection() as conn:
-        # Count total matching results
-        count_params = params + [tsquery] * len(search_conditions)
+        where_clause = "WHERE tenant_id = %s AND search_vector @@ plainto_tsquery('english', %s)"
+        params: list = [tenant_id, query]
+
+        if artifact_types:
+            placeholders = ",".join(["%s"] * len(artifact_types))
+            where_clause += f" AND artifact_type IN ({placeholders})"
+            params.extend(artifact_types)
+
+        # Get count
         count_result = await conn.execute(
-            f"""
-            SELECT COUNT(DISTINCT a.id)
-            FROM {SCHEMA_NAME}.artifacts a
-            LEFT JOIN LATERAL (
-                SELECT content, search_vector FROM {SCHEMA_NAME}.artifact_versions
-                WHERE artifact_id = a.id
-                ORDER BY version_number DESC
-                LIMIT 1
-            ) av ON true
-            WHERE a.tenant_id = %s
-            {type_filter}
-            AND ({search_clause})
-            """,
-            count_params,
+            f"SELECT COUNT(*) FROM {SCHEMA_NAME}.artifact {where_clause}",
+            params,
         )
         total = (await count_result.fetchone())[0]
 
-        # Search with ranking
-        # Build rank calculation based on what we're searching
-        rank_parts = []
-        if request.search_title:
-            rank_parts.append(
-                "ts_rank(a.search_vector, to_tsquery('english', %s))"
-            )
-        if request.search_content:
-            rank_parts.append(
-                "ts_rank(av.search_vector, to_tsquery('english', %s))"
-            )
-        if not rank_parts:
-            rank_parts = [
-                "ts_rank(a.search_vector, to_tsquery('english', %s))",
-                "ts_rank(av.search_vector, to_tsquery('english', %s))",
-            ]
-
-        rank_calc = " + ".join(rank_parts)
-
-        # Build params for the main query:
-        # - rank_calc placeholders (len(rank_parts) times)
-        # - ts_headline placeholder
-        # - tenant_id for WHERE
-        # - type_filter placeholders (if any)
-        # - search_clause placeholders (len(search_conditions) times)
-        # - ORDER BY rank_calc placeholders (len(rank_parts) times)
-        # - LIMIT/OFFSET
-        query_params = (
-            [tsquery] * len(rank_parts)  # For rank calculation in SELECT
-            + [tsquery]  # For ts_headline
-            + [tenant_id]  # tenant_id for WHERE
-            + (request.artifact_types if request.artifact_types else [])
-            + [tsquery] * len(search_conditions)  # For WHERE clause
-            + [tsquery] * len(rank_parts)  # For ORDER BY
-            + [request.limit, request.offset]
-        )
-
+        # Get results with ranking
         result = await conn.execute(
             f"""
-            SELECT
-                a.id as artifact_id,
-                a.artifact_type::text,
-                a.title,
-                a.source,
-                ({rank_calc}) as rank,
-                ts_headline('english', COALESCE(av.content, ''),
-                           to_tsquery('english', %s),
-                           'MaxWords=50, MinWords=25') as snippet,
-                {content_select} as content,
-                a.created_at,
-                a.updated_at,
-                a.metadata
-            FROM {SCHEMA_NAME}.artifacts a
-            LEFT JOIN LATERAL (
-                SELECT content, search_vector FROM {SCHEMA_NAME}.artifact_versions
-                WHERE artifact_id = a.id
-                ORDER BY version_number DESC
-                LIMIT 1
-            ) av ON true
-            WHERE a.tenant_id = %s
-            {type_filter}
-            AND ({search_clause})
-            ORDER BY ({rank_calc}) DESC
+            SELECT id, tenant_id, artifact_type, parent_artifact_id,
+                   start_offset, end_offset, position_metadata,
+                   title, content, content_hash,
+                   source, source_system, external_id, metadata,
+                   created_at, updated_at,
+                   ts_rank(search_vector, plainto_tsquery('english', %s)) as rank
+            FROM {SCHEMA_NAME}.artifact
+            {where_clause}
+            ORDER BY rank DESC
             LIMIT %s OFFSET %s
             """,
-            query_params,
+            params + [query, limit, offset],
         )
         rows = await result.fetchall()
 
-    items = [
-        SearchResultItem(
-            artifact_id=row[0],
-            artifact_type=row[1],
-            title=row[2],
-            source=row[3],
-            score=float(row[4]) if row[4] else 0.0,
-            similarity=None,
-            rank=float(row[4]) if row[4] else 0.0,
-            content_snippet=row[5],
-            content=row[6],
-            created_at=row[7],
-            updated_at=row[8],
-            metadata=row[9],
+    results = []
+    for i, row in enumerate(rows):
+        artifact = _row_to_artifact_response(row[:16])
+        rank_score = float(row[16])
+        results.append(SearchResult(artifact=artifact, score=rank_score, rank=i + 1))
+
+    return SearchResponse(results=results, total=total, query=query)
+
+
+async def semantic_search(
+    tenant_id: int,
+    query_vector: list[float],
+    artifact_types: list[str] | None = None,
+    limit: int = 20,
+    similarity_threshold: float = 0.0,
+    model: str | None = None,
+) -> SearchResponse:
+    """Semantic search using vector similarity."""
+    vector_str = "[" + ",".join(str(v) for v in query_vector) + "]"
+
+    async with get_connection() as conn:
+        # Build embedding filter
+        emb_where = "WHERE e.tenant_id = %s"
+        params: list = [tenant_id]
+
+        if model:
+            emb_where += " AND e.model = %s"
+            params.append(model)
+
+        # Join with artifacts
+        artifact_where = ""
+        if artifact_types:
+            placeholders = ",".join(["%s"] * len(artifact_types))
+            artifact_where = f" AND a.artifact_type IN ({placeholders})"
+            params.extend(artifact_types)
+
+        result = await conn.execute(
+            f"""
+            SELECT DISTINCT ON (a.id)
+                   a.id, a.tenant_id, a.artifact_type, a.parent_artifact_id,
+                   a.start_offset, a.end_offset, a.position_metadata,
+                   a.title, a.content, a.content_hash,
+                   a.source, a.source_system, a.external_id, a.metadata,
+                   a.created_at, a.updated_at,
+                   1 - (e.embedding <=> %s::vector) as similarity
+            FROM {SCHEMA_NAME}.embedding e
+            JOIN {SCHEMA_NAME}.artifact a ON a.id = e.entity_id AND e.entity_type = 'artifact'
+            {emb_where} {artifact_where}
+            ORDER BY a.id, similarity DESC
+            """,
+            params + [vector_str],
         )
-        for row in rows
-    ]
+        rows = await result.fetchall()
 
-    await logger.ainfo(
-        "Full-text search completed",
-        query=request.query,
-        results=len(items),
-        total=total,
-    )
+    # Filter by threshold and sort
+    results = []
+    for row in rows:
+        similarity = float(row[16])
+        if similarity >= similarity_threshold:
+            artifact = _row_to_artifact_response(row[:16])
+            results.append(SearchResult(artifact=artifact, score=similarity))
 
-    return SearchResponse(
-        items=items,
-        total=total,
-        query=request.query,
-        search_type=SearchType.FULLTEXT,
-        limit=request.limit,
-        offset=request.offset,
-    )
+    # Sort by similarity
+    results.sort(key=lambda r: r.score, reverse=True)
+    results = results[:limit]
+
+    # Assign ranks
+    for i, result in enumerate(results):
+        result.rank = i + 1
+
+    return SearchResponse(results=results, total=len(results), query="(semantic)")
 
 
 async def hybrid_search(
-    tenant_id: int, request: SearchRequest
+    tenant_id: int,
+    query: str,
+    query_vector: list[float],
+    artifact_types: list[str] | None = None,
+    limit: int = 20,
+    rrf_k: int = 60,
+    semantic_weight: float = 0.5,
+    model: str | None = None,
 ) -> SearchResponse:
-    """Perform hybrid search combining semantic and full-text search.
+    """Hybrid search using Reciprocal Rank Fusion (RRF)."""
+    # Get fulltext results
+    fts_response = await fulltext_search(
+        tenant_id=tenant_id,
+        query=query,
+        artifact_types=artifact_types,
+        limit=limit * 2,  # Fetch more for RRF
+    )
 
-    Uses Reciprocal Rank Fusion (RRF) to combine rankings from both
-    search methods for better overall results.
+    # Get semantic results
+    sem_response = await semantic_search(
+        tenant_id=tenant_id,
+        query_vector=query_vector,
+        artifact_types=artifact_types,
+        limit=limit * 2,
+        model=model,
+    )
 
-    RRF formula: score = sum(1 / (k + rank)) where k=60 is typical
+    # Build rank maps
+    fts_ranks = {r.artifact.id: r.rank for r in fts_response.results}
+    sem_ranks = {r.artifact.id: r.rank for r in sem_response.results}
 
-    Args:
-        tenant_id: Tenant ID for isolation
-        request: Hybrid search request
+    # Collect all unique artifacts
+    artifacts_map = {r.artifact.id: r.artifact for r in fts_response.results}
+    artifacts_map.update({r.artifact.id: r.artifact for r in sem_response.results})
 
-    Returns:
-        Search response with combined ranked results
-    """
-    # Resolve model
-    model_id = _resolve_model(request.model)
+    # Calculate RRF scores
+    rrf_scores = []
+    fts_weight = 1 - semantic_weight
 
-    # Generate embedding for semantic search using the configured provider
-    query_embedding = await generate_query_embedding(request.query, model_id)
-    dimensions = len(query_embedding)
-    padded_embedding = query_embedding + [0.0] * (1536 - dimensions)
+    for artifact_id, artifact in artifacts_map.items():
+        fts_rank = fts_ranks.get(artifact_id)
+        sem_rank = sem_ranks.get(artifact_id)
 
-    # Convert query to tsquery for FTS
-    query_words = request.query.split()
-    tsquery = " & ".join(query_words)
+        score = 0.0
+        if fts_rank is not None:
+            score += fts_weight / (rrf_k + fts_rank)
+        if sem_rank is not None:
+            score += semantic_weight / (rrf_k + sem_rank)
 
-    # Build type filter
-    type_filter = ""
-    type_params: list = []
-    if request.artifact_types:
-        placeholders = ", ".join(["%s"] * len(request.artifact_types))
-        type_filter = f"AND a.artifact_type::text IN ({placeholders})"
-        type_params = request.artifact_types
+        rrf_scores.append((artifact, score))
 
-    # Distance threshold for semantic search
-    distance_threshold = 1.0 - request.min_similarity
+    # Sort by RRF score
+    rrf_scores.sort(key=lambda x: x[1], reverse=True)
 
-    # Content selection
-    content_select = "av.content" if request.include_content else "NULL"
+    # Build results
+    results = []
+    for i, (artifact, score) in enumerate(rrf_scores[:limit]):
+        results.append(SearchResult(artifact=artifact, score=score, rank=i + 1))
 
-    # RRF constant (k=60 is standard)
-    k = 60
+    return SearchResponse(results=results, total=len(rrf_scores), query=query)
 
+
+async def similar_artifacts(
+    tenant_id: int,
+    artifact_id: int,
+    limit: int = 10,
+    artifact_types: list[str] | None = None,
+    model: str | None = None,
+) -> SearchResponse:
+    """Find artifacts similar to a given artifact using its embedding."""
     async with get_connection() as conn:
-        # Use CTE to combine semantic and FTS results with RRF
+        # Get the artifact's embedding
+        emb_where = "WHERE tenant_id = %s AND entity_type = 'artifact' AND entity_id = %s"
+        params: list = [tenant_id, artifact_id]
+
+        if model:
+            emb_where += " AND model = %s"
+            params.append(model)
+
         result = await conn.execute(
             f"""
-            WITH semantic_results AS (
-                SELECT
-                    a.id as artifact_id,
-                    ROW_NUMBER() OVER (ORDER BY e.embedding <=> %s::mimirdata.vector) as semantic_rank,
-                    1 - (e.embedding <=> %s::mimirdata.vector) as similarity
-                FROM {SCHEMA_NAME}.embeddings e
-                JOIN {SCHEMA_NAME}.artifacts a ON e.artifact_id = a.id
-                WHERE a.tenant_id = %s
-                AND e.model = %s
-                AND (e.embedding <=> %s::mimirdata.vector) < %s
-                {type_filter}
-            ),
-            fts_results AS (
-                SELECT
-                    a.id as artifact_id,
-                    ROW_NUMBER() OVER (ORDER BY ts_rank(
-                        COALESCE(a.search_vector, ''::tsvector) ||
-                        COALESCE(av.search_vector, ''::tsvector),
-                        to_tsquery('english', %s)
-                    ) DESC) as fts_rank,
-                    ts_rank(
-                        COALESCE(a.search_vector, ''::tsvector) ||
-                        COALESCE(av.search_vector, ''::tsvector),
-                        to_tsquery('english', %s)
-                    ) as rank
-                FROM {SCHEMA_NAME}.artifacts a
-                LEFT JOIN LATERAL (
-                    SELECT search_vector FROM {SCHEMA_NAME}.artifact_versions
-                    WHERE artifact_id = a.id
-                    ORDER BY version_number DESC
-                    LIMIT 1
-                ) av ON true
-                WHERE a.tenant_id = %s
-                {type_filter}
-                AND (
-                    a.search_vector @@ to_tsquery('english', %s)
-                    OR av.search_vector @@ to_tsquery('english', %s)
-                )
-            ),
-            combined AS (
-                SELECT
-                    COALESCE(s.artifact_id, f.artifact_id) as artifact_id,
-                    COALESCE(1.0 / (%s + s.semantic_rank), 0) +
-                    COALESCE(1.0 / (%s + f.fts_rank), 0) as rrf_score,
-                    s.similarity,
-                    f.rank as fts_rank
-                FROM semantic_results s
-                FULL OUTER JOIN fts_results f ON s.artifact_id = f.artifact_id
-            )
-            SELECT
-                c.artifact_id,
-                a.artifact_type::text,
-                a.title,
-                a.source,
-                c.rrf_score as score,
-                c.similarity,
-                c.fts_rank,
-                SUBSTRING(av.content, 1, 300) as snippet,
-                {content_select} as content,
-                a.created_at,
-                a.updated_at,
-                a.metadata
-            FROM combined c
-            JOIN {SCHEMA_NAME}.artifacts a ON c.artifact_id = a.id
-            LEFT JOIN LATERAL (
-                SELECT content FROM {SCHEMA_NAME}.artifact_versions
-                WHERE artifact_id = a.id
-                ORDER BY version_number DESC
-                LIMIT 1
-            ) av ON true
-            ORDER BY c.rrf_score DESC
-            LIMIT %s OFFSET %s
+            SELECT embedding::text FROM {SCHEMA_NAME}.embedding
+            {emb_where}
+            LIMIT 1
             """,
-            [
-                # semantic_results CTE
-                json.dumps(padded_embedding),  # ORDER BY
-                json.dumps(padded_embedding),  # similarity calc
-                tenant_id,
-                model_id,
-                json.dumps(padded_embedding),  # distance comparison
-                distance_threshold,
-            ]
-            + type_params
-            + [
-                # fts_results CTE
-                tsquery,  # ROW_NUMBER rank
-                tsquery,  # rank calc
-                tenant_id,
-            ]
-            + type_params
-            + [
-                tsquery,  # WHERE clause 1
-                tsquery,  # WHERE clause 2
-                # combined CTE
-                k,  # RRF k for semantic
-                k,  # RRF k for fts
-                # Final query
-                request.limit,
-                request.offset,
-            ],
+            params,
         )
-        rows = await result.fetchall()
+        row = await result.fetchone()
 
-        # Get total count (approximate for hybrid)
-        count_result = await conn.execute(
-            f"""
-            SELECT COUNT(DISTINCT artifact_id) FROM (
-                SELECT a.id as artifact_id
-                FROM {SCHEMA_NAME}.embeddings e
-                JOIN {SCHEMA_NAME}.artifacts a ON e.artifact_id = a.id
-                WHERE a.tenant_id = %s
-                AND e.model = %s
-                AND (e.embedding <=> %s::mimirdata.vector) < %s
-                {type_filter}
-                UNION
-                SELECT a.id as artifact_id
-                FROM {SCHEMA_NAME}.artifacts a
-                LEFT JOIN LATERAL (
-                    SELECT search_vector FROM {SCHEMA_NAME}.artifact_versions
-                    WHERE artifact_id = a.id
-                    ORDER BY version_number DESC
-                    LIMIT 1
-                ) av ON true
-                WHERE a.tenant_id = %s
-                {type_filter}
-                AND (
-                    a.search_vector @@ to_tsquery('english', %s)
-                    OR av.search_vector @@ to_tsquery('english', %s)
-                )
-            ) combined
-            """,
-            [
-                tenant_id,
-                model_id,
-                json.dumps(padded_embedding),
-                distance_threshold,
-            ]
-            + type_params
-            + [tenant_id]
-            + type_params
-            + [tsquery, tsquery],
-        )
-        total = (await count_result.fetchone())[0]
+    if not row:
+        return SearchResponse(results=[], total=0, query=f"similar_to:{artifact_id}")
 
-    items = [
-        SearchResultItem(
-            artifact_id=row[0],
-            artifact_type=row[1],
-            title=row[2],
-            source=row[3],
-            score=float(row[4]) if row[4] else 0.0,
-            similarity=float(row[5]) if row[5] else None,
-            rank=float(row[6]) if row[6] else None,
-            content_snippet=row[7],
-            content=row[8],
-            created_at=row[9],
-            updated_at=row[10],
-            metadata=row[11],
-        )
-        for row in rows
-    ]
+    # Parse embedding
+    vector_str = row[0]
+    query_vector = [float(v) for v in vector_str.strip("[]").split(",")]
 
-    await logger.ainfo(
-        "Hybrid search completed",
-        query=request.query,
-        model=model_id,
-        results=len(items),
-        total=total,
+    # Find similar, excluding the source artifact
+    response = await semantic_search(
+        tenant_id=tenant_id,
+        query_vector=query_vector,
+        artifact_types=artifact_types,
+        limit=limit + 1,  # +1 to account for excluding self
+        model=model,
     )
+
+    # Filter out the source artifact
+    results = [r for r in response.results if r.artifact.id != artifact_id][:limit]
+
+    # Re-rank
+    for i, result in enumerate(results):
+        result.rank = i + 1
 
     return SearchResponse(
-        items=items,
-        total=total,
-        query=request.query,
-        search_type=SearchType.HYBRID,
-        limit=request.limit,
-        offset=request.offset,
+        results=results,
+        total=len(results),
+        query=f"similar_to:{artifact_id}",
     )
 
 
-async def search(tenant_id: int, request: SearchRequest) -> SearchResponse:
-    """Unified search endpoint that delegates to appropriate search type.
-
-    Args:
-        tenant_id: Tenant ID for isolation
-        request: Search request with type specification
-
-    Returns:
-        Search response with ranked results
-    """
-    if request.search_type == SearchType.SEMANTIC:
-        semantic_request = SemanticSearchRequest(
-            query=request.query,
-            model=request.model,
-            limit=request.limit,
-            offset=request.offset,
-            artifact_types=request.artifact_types,
-            min_similarity=request.min_similarity,
-            include_content=request.include_content,
-        )
-        return await semantic_search(tenant_id, semantic_request)
-
-    elif request.search_type == SearchType.FULLTEXT:
-        fts_request = FulltextSearchRequest(
-            query=request.query,
-            limit=request.limit,
-            offset=request.offset,
-            artifact_types=request.artifact_types,
-            include_content=request.include_content,
-        )
-        return await fulltext_search(tenant_id, fts_request)
-
-    else:  # HYBRID
-        return await hybrid_search(tenant_id, request)
-
-
-async def find_similar_artifacts(
-    tenant_id: int, request: SimilarArtifactsRequest
-) -> SearchResponse:
-    """Find artifacts similar to a given artifact.
-
-    Uses the existing embedding for the artifact to find similar ones.
-
-    Args:
-        tenant_id: Tenant ID for isolation
-        request: Similar artifacts request
-
-    Returns:
-        Search response with similar artifacts
-    """
-    # Resolve model
-    model_id = _resolve_model(request.model)
-
-    # Get the embedding for the source artifact
-    embedding = await get_embedding_vector(
-        request.artifact_id, tenant_id, model_id
-    )
-
-    if not embedding:
-        await logger.awarning(
-            "No embedding found for artifact",
-            artifact_id=request.artifact_id,
-            model=model_id,
-        )
-        return SearchResponse(
-            items=[],
-            total=0,
-            query=f"similar to artifact {request.artifact_id}",
-            search_type=SearchType.SEMANTIC,
-            limit=request.limit,
-            offset=0,
-        )
-
-    # Pad embedding
-    padded_embedding = embedding + [0.0] * (1536 - len(embedding))
-    distance_threshold = 1.0 - request.min_similarity
-
-    # Content selection
-    content_select = "av.content" if request.include_content else "NULL"
-
-    async with get_connection() as conn:
-        result = await conn.execute(
-            f"""
-            SELECT
-                a.id as artifact_id,
-                a.artifact_type::text,
-                a.title,
-                a.source,
-                1 - (e.embedding <=> %s::mimirdata.vector) as similarity,
-                SUBSTRING(av.content, 1, 300) as snippet,
-                {content_select} as content,
-                a.created_at,
-                a.updated_at,
-                a.metadata
-            FROM {SCHEMA_NAME}.embeddings e
-            JOIN {SCHEMA_NAME}.artifacts a ON e.artifact_id = a.id
-            LEFT JOIN LATERAL (
-                SELECT content FROM {SCHEMA_NAME}.artifact_versions
-                WHERE artifact_id = a.id
-                ORDER BY version_number DESC
-                LIMIT 1
-            ) av ON true
-            WHERE a.tenant_id = %s
-            AND e.model = %s
-            AND e.artifact_id != %s
-            AND (e.embedding <=> %s::mimirdata.vector) < %s
-            ORDER BY e.embedding <=> %s::mimirdata.vector
-            LIMIT %s
-            """,
-            [
-                json.dumps(padded_embedding),
-                tenant_id,
-                model_id,
-                request.artifact_id,  # Exclude source artifact
-                json.dumps(padded_embedding),
-                distance_threshold,
-                json.dumps(padded_embedding),
-                request.limit,
-            ],
-        )
-        rows = await result.fetchall()
-
-    items = [
-        SearchResultItem(
-            artifact_id=row[0],
-            artifact_type=row[1],
-            title=row[2],
-            source=row[3],
-            score=float(row[4]),
-            similarity=float(row[4]),
-            rank=None,
-            content_snippet=row[5],
-            content=row[6],
-            created_at=row[7],
-            updated_at=row[8],
-            metadata=row[9],
-        )
-        for row in rows
-    ]
-
-    await logger.ainfo(
-        "Similar artifacts search completed",
-        source_artifact=request.artifact_id,
-        model=model_id,
-        results=len(items),
-    )
-
-    return SearchResponse(
-        items=items,
-        total=len(items),
-        query=f"similar to artifact {request.artifact_id}",
-        search_type=SearchType.SEMANTIC,
-        limit=request.limit,
-        offset=0,
+def _row_to_artifact_response(row: tuple) -> ArtifactResponse:
+    """Convert database row to ArtifactResponse."""
+    return ArtifactResponse(
+        id=row[0],
+        tenant_id=row[1],
+        artifact_type=row[2],
+        parent_artifact_id=row[3],
+        start_offset=row[4],
+        end_offset=row[5],
+        position_metadata=row[6],
+        title=row[7],
+        content=row[8],
+        content_hash=row[9],
+        source=row[10],
+        source_system=row[11],
+        external_id=row[12],
+        metadata=row[13],
+        created_at=row[14],
+        updated_at=row[15],
     )

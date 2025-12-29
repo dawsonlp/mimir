@@ -1,143 +1,95 @@
-"""Embeddings API routes.
+"""Embedding API endpoints (V2)."""
 
-Supports multiple embedding providers including:
-- Voyage AI (Anthropic recommended): voyage-3, voyage-3-large, voyage-code-3, etc.
-- OpenAI: text-embedding-3-small, text-embedding-3-large, etc.
-
-Configure providers via environment variables:
-- VOYAGE_API_KEY: For Voyage AI models
-- OPENAI_API_KEY: For OpenAI models
-"""
-
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, Query
 
 from mimir.schemas.embedding import (
-    EmbeddingBatchCreate,
-    EmbeddingBatchResponse,
     EmbeddingCreate,
     EmbeddingListResponse,
-    EmbeddingProvidersResponse,
     EmbeddingResponse,
+    EmbeddingWithVectorResponse,
 )
+from mimir.schemas.relation import EntityType
 from mimir.services import embedding_service
 
 router = APIRouter(prefix="/embeddings", tags=["embeddings"])
 
 
-@router.get("/providers", response_model=EmbeddingProvidersResponse)
-async def list_providers() -> EmbeddingProvidersResponse:
-    """List available embedding providers and models.
-
-    Returns all configured embedding providers with their available models.
-    Use this to discover which models are available for embedding generation.
-
-    Providers include:
-    - **voyage**: Voyage AI models (Anthropic recommended) - requires VOYAGE_API_KEY
-    - **openai**: OpenAI embedding models - requires OPENAI_API_KEY
-    """
-    return await embedding_service.get_available_providers()
-
-
-@router.post("", response_model=EmbeddingResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=EmbeddingResponse, status_code=201)
 async def create_embedding(
     data: EmbeddingCreate,
-    x_tenant_id: int = Header(..., description="Tenant ID"),
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
 ) -> EmbeddingResponse:
-    """Create an embedding for an artifact.
-
-    Generates a vector embedding using the specified model and stores it.
-
-    Supported models (use GET /providers to see configured providers):
-    - **Voyage AI**: voyage-3, voyage-3-large, voyage-3-lite, voyage-code-3, etc.
-    - **OpenAI**: text-embedding-3-small, text-embedding-3-large, text-embedding-ada-002
-
-    If no model is specified, uses the configured default model.
-    """
-    try:
-        return await embedding_service.create_embedding(x_tenant_id, data)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    """Create a new embedding."""
+    return await embedding_service.create_embedding(x_tenant_id, data)
 
 
-@router.post(
-    "/batch", response_model=EmbeddingBatchResponse, status_code=status.HTTP_201_CREATED
-)
-async def create_embeddings_batch(
-    data: EmbeddingBatchCreate,
-    x_tenant_id: int = Header(..., description="Tenant ID"),
-) -> EmbeddingBatchResponse:
-    """Create embeddings for multiple artifacts in batch.
-
-    Processes multiple artifacts efficiently using batched API calls.
-    Returns counts of successful and failed embeddings.
-
-    Supported models (use GET /providers to see configured providers):
-    - **Voyage AI**: voyage-3, voyage-3-large, voyage-3-lite, voyage-code-3, etc.
-    - **OpenAI**: text-embedding-3-small, text-embedding-3-large, text-embedding-ada-002
-    """
-    return await embedding_service.create_embeddings_batch(x_tenant_id, data)
+@router.get("", response_model=EmbeddingListResponse)
+async def list_embeddings(
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
+    entity_type: EntityType | None = Query(None),
+    entity_id: int | None = Query(None),
+    model: str | None = Query(None),
+) -> EmbeddingListResponse:
+    """List embeddings with optional filtering."""
+    return await embedding_service.list_embeddings(
+        x_tenant_id, entity_type, entity_id, model
+    )
 
 
 @router.get("/{embedding_id}", response_model=EmbeddingResponse)
 async def get_embedding(
     embedding_id: int,
-    x_tenant_id: int = Header(..., description="Tenant ID"),
-) -> EmbeddingResponse:
-    """Get an embedding by ID."""
-    embedding = await embedding_service.get_embedding(embedding_id, x_tenant_id)
-    if not embedding:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Embedding not found"
-        )
-    return embedding
-
-
-@router.get("", response_model=EmbeddingListResponse)
-async def list_embeddings(
-    x_tenant_id: int = Header(..., description="Tenant ID"),
-    page: int = 1,
-    page_size: int = 20,
-    artifact_id: int | None = None,
-    model: str | None = None,
-) -> EmbeddingListResponse:
-    """List embeddings with pagination and optional filtering.
-
-    Filters:
-    - artifact_id: Filter by specific artifact
-    - model: Filter by embedding model
-    """
-    return await embedding_service.list_embeddings(
-        x_tenant_id,
-        page=page,
-        page_size=page_size,
-        artifact_id=artifact_id,
-        model=model,
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
+    include_vector: bool = Query(False, description="Include embedding vector"),
+) -> EmbeddingResponse | EmbeddingWithVectorResponse:
+    """Get embedding by ID."""
+    result = await embedding_service.get_embedding(
+        embedding_id, x_tenant_id, include_vector
     )
+    if not result:
+        raise HTTPException(status_code=404, detail="Embedding not found")
+    return result
 
 
-@router.delete("/{embedding_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{embedding_id}", status_code=204)
 async def delete_embedding(
     embedding_id: int,
-    x_tenant_id: int = Header(..., description="Tenant ID"),
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
 ) -> None:
-    """Delete an embedding by ID."""
+    """Delete an embedding."""
     deleted = await embedding_service.delete_embedding(embedding_id, x_tenant_id)
     if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Embedding not found"
-        )
+        raise HTTPException(status_code=404, detail="Embedding not found")
 
 
-@router.delete("/artifact/{artifact_id}", status_code=status.HTTP_200_OK)
-async def delete_embeddings_by_artifact(
-    artifact_id: int,
-    x_tenant_id: int = Header(..., description="Tenant ID"),
+@router.delete("/entity/{entity_type}/{entity_id}")
+async def delete_entity_embeddings(
+    entity_type: EntityType,
+    entity_id: int,
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
+    model: str | None = Query(None, description="Delete only for specific model"),
 ) -> dict:
-    """Delete all embeddings for an artifact.
-
-    Returns the count of deleted embeddings.
-    """
-    count = await embedding_service.delete_embeddings_by_artifact(
-        artifact_id, x_tenant_id
+    """Delete all embeddings for an entity."""
+    count = await embedding_service.delete_entity_embeddings(
+        x_tenant_id, entity_type, entity_id, model
     )
     return {"deleted": count}
+
+
+@router.post("/similar")
+async def find_similar(
+    query_vector: list[float],
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
+    limit: int = Query(20, ge=1, le=100),
+    entity_type: EntityType | None = Query(None),
+    model: str | None = Query(None),
+    similarity_threshold: float = Query(0.0, ge=0.0, le=1.0),
+) -> list[dict]:
+    """Find similar embeddings by vector."""
+    results = await embedding_service.find_similar(
+        x_tenant_id, query_vector, limit, entity_type, model, similarity_threshold
+    )
+    return [
+        {"embedding": emb.model_dump(), "similarity": score}
+        for emb, score in results
+    ]

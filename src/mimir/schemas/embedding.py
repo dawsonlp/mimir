@@ -1,99 +1,99 @@
-"""Embedding schemas for Pydantic validation."""
+"""Pydantic schemas for Embedding entity - vector representations for semantic search.
+
+Embeddings enable "find similar" queries by storing vector representations
+of artifact content. Uses HNSW index for fast approximate nearest neighbor.
+
+Supported Models:
+- OpenAI: text-embedding-3-small (1536d), text-embedding-3-large (3072d)
+- Ollama: nomic-embed-text (768d), mxbai-embed-large (1024d)
+
+Chunking:
+- For long documents, create multiple embeddings with chunk_index
+- chunk_start/chunk_end track character positions within source
+
+Key Points:
+- One embedding per (entity, model, chunk_index) combination
+- Embeddings are invisible to semantic search without explicit creation
+- HNSW index limited to 2000 dimensions
+
+Usage Examples:
+    # Generate embedding for an artifact
+    POST /embeddings/generate {"entity_type": "artifact", "entity_id": 123}
+    
+    # Find similar artifacts
+    POST /embeddings/similar {"text": "database architecture", "limit": 10}
+    
+    # Semantic search
+    POST /search/semantic {"query": "PostgreSQL optimization", "model": "text-embedding-3-small"}
+"""
 
 from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-
-# Maximum dimensions supported by database (pgvector HNSW index limit is 2000)
-MAX_EMBEDDING_DIMENSIONS = 1536
+from mimir.schemas.relation import EntityType
 
 
-class EmbeddingModelResponse(BaseModel):
-    """Schema for embedding model information."""
+class EmbeddingBase(BaseModel):
+    """Base schema for embedding."""
 
-    model_id: str = Field(..., description="Unique model identifier")
-    provider: str = Field(..., description="Provider name (e.g., 'voyage', 'openai')")
-    display_name: str = Field(..., description="Human-readable name")
-    dimensions: int = Field(..., description="Output embedding dimensions")
-    max_tokens: int = Field(..., description="Maximum input tokens")
-    description: str = Field(default="", description="Model description")
-
-
-class EmbeddingProvidersResponse(BaseModel):
-    """Schema for listing available embedding providers and models."""
-
-    providers: list[str] = Field(..., description="List of configured provider names")
-    models: list[EmbeddingModelResponse] = Field(
-        ..., description="All available models from configured providers"
-    )
-    default_model: str | None = Field(
-        None, description="Default model ID (if any provider is configured)"
-    )
+    entity_type: EntityType = Field(..., description="Type of entity being embedded")
+    entity_id: int = Field(..., description="ID of the entity")
+    model: str = Field(..., description="Model used to generate embedding")
+    dimensions: int = Field(..., description="Vector dimensions")
+    chunk_index: int | None = Field(None, description="Chunk index if chunked")
+    chunk_start: int | None = Field(None, description="Character position start")
+    chunk_end: int | None = Field(None, description="Character position end")
 
 
 class EmbeddingCreate(BaseModel):
-    """Schema for creating an embedding."""
+    """Schema for creating a new embedding."""
 
-    artifact_id: int = Field(..., description="ID of the artifact to embed")
-    artifact_version_id: int | None = Field(
-        None, description="Optional specific version ID"
-    )
-    model: str | None = Field(
-        default=None,
-        description="Embedding model to use (defaults to configured default)",
-    )
-    text: str | None = Field(
-        None,
-        description="Optional custom text to embed (defaults to artifact content)",
-    )
-    chunk_index: int = Field(
-        default=0, ge=0, description="Chunk index for chunked documents"
-    )
+    entity_type: EntityType
+    entity_id: int
+    model: str = Field(..., min_length=1, max_length=100)
+    embedding: list[float] = Field(..., description="Vector values")
+    chunk_index: int | None = None
+    chunk_start: int | None = None
+    chunk_end: int | None = None
 
 
-class EmbeddingResponse(BaseModel):
-    """Schema for embedding response."""
+class EmbeddingResponse(EmbeddingBase):
+    """Schema for embedding response (without vector)."""
 
     id: int
     tenant_id: int
-    artifact_id: int
-    artifact_version_id: int | None
-    model: str
-    dimensions: int
-    chunk_index: int
-    chunk_text: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
 
 
+class EmbeddingWithVectorResponse(EmbeddingResponse):
+    """Schema for embedding response with vector."""
+
+    embedding: list[float]
+
+
 class EmbeddingListResponse(BaseModel):
-    """Schema for paginated embedding list response."""
+    """Schema for listing embeddings."""
 
     items: list[EmbeddingResponse]
     total: int
-    page: int
-    page_size: int
 
 
-class EmbeddingBatchCreate(BaseModel):
-    """Schema for batch embedding creation."""
+class EmbeddingGenerateRequest(BaseModel):
+    """Request to generate embeddings for an entity."""
 
-    artifact_ids: list[int] = Field(
-        ..., min_length=1, max_length=100, description="List of artifact IDs to embed"
-    )
-    model: str | None = Field(
-        default=None,
-        description="Embedding model to use (defaults to configured default)",
-    )
+    entity_type: EntityType
+    entity_id: int
+    model: str | None = Field(None, description="Model to use (default from config)")
+    force: bool = Field(False, description="Regenerate even if exists")
 
 
-class EmbeddingBatchResponse(BaseModel):
-    """Schema for batch embedding response."""
+class EmbeddingBatchGenerateRequest(BaseModel):
+    """Request to generate embeddings for multiple entities."""
 
-    created: int = Field(..., description="Number of embeddings created")
-    failed: int = Field(..., description="Number of embeddings that failed")
-    errors: list[str] = Field(
-        default_factory=list, description="Error messages for failures"
-    )
+    entity_type: EntityType
+    entity_ids: list[int]
+    model: str | None = None
+    force: bool = False

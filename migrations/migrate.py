@@ -1,5 +1,5 @@
 """
-Plain SQL migration runner for Mímir.
+Plain SQL migration runner for Mímir V2.
 
 Usage:
     python -m migrations.migrate up      # Apply all pending migrations
@@ -32,7 +32,7 @@ def get_database_url() -> str:
         if not password:
             raise ValueError("POSTGRES_PASSWORD environment variable required")
         url = f"postgresql://mimir:{password}@localhost:35432/mimir"
-    # Convert async URL to sync for psycopg
+    # Ensure we use psycopg v3 URL format (postgresql://, not postgresql+psycopg://)
     return url.replace("postgresql+psycopg://", "postgresql://")
 
 

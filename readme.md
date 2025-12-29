@@ -1,181 +1,180 @@
-# Mímir
+# Mímir V2 - Knowledge Graph & Semantic Memory API
 
-*Named after the Norse keeper of the Well of Knowledge*
-
-A durable, accountable memory and meta-analysis system for human thinking, centered on conversations, documents, and decisions.
-
-## Overview
-
-Mímir serves as a **storage foundation** for preserving and querying intellectual work. It provides a clean API layer over PostgreSQL with pgvector for semantic search capabilities.
-
-This is **not** a chat replacement, search engine, or productivity dashboard.
-
-Instead, it aims to:
-
-- Preserve canonical records of conversations and writings
-- Make intent, reasoning, and decisions first-class, inspectable objects
-- Enable reflection on how and why conclusions were reached
-- Reduce cognitive waste by detecting redundancy and recalling prior conclusions
-- Support evolving understanding without freezing ontology or meaning
-- Balance cost, agency, and truthfulness, using LLMs as assistants—not authorities
-
-In short:
-
-> Turn transient conversations into a trustworthy, evolving intellectual record.
-
-## Why Mímir? (vs. Standard RAG Systems)
-
-Mímir is designed as a **storage backend for RAG systems** with multiple client applications. But why not use Pinecone, Weaviate, Chroma, or plain pgvector?
-
-### Standard RAG Systems
-
-| Feature | Pinecone/Weaviate/Chroma | Mímir |
-|---------|--------------------------|-------|
-| Vector storage | ✅ | ✅ |
-| Metadata filtering | ✅ | ✅ |
-| Hybrid search | Some | ✅ RRF fusion* |
-| Managed hosting | ✅ | Self-hosted |
-| Production scale | ✅ Battle-tested | Newer |
-
-### Mímir's Unique Differentiators
-
-| Feature | Standard RAG | Mímir |
-|---------|--------------|-------|
-| **Intent & Decision tracking** | ❌ | ✅ Track "why" behind choices |
-| **Entity relations** | ❌ | ✅ Graph connections between entities |
-| **Spans & annotations** | ❌ | ✅ Quotes/highlights within documents |
-| **Full provenance/audit** | ❌ | ✅ Who changed what, when, why |
-| **Content versioning** | ❌ | ✅ Append-only artifact history |
-| **Multi-tenant isolation** | App-level | ✅ Built-in tenant_id |
-| **External key provenance** | Basic | ✅ source_system + external_id |
-
-### When to Use Mímir
-
-**Choose Mímir if you need:**
-- Decision tracking with reasoning chains
-- Relationships between documents (knowledge graph patterns)
-- Audit trails for compliance or accountability
-- Meta-analysis or decision support systems
-- One system for documents + decisions + provenance
-- Full control via self-hosted PostgreSQL
-
-**Choose standard RAG if you need:**
-- Simple documents → embeddings → search
-- Managed cloud hosting without operational overhead
-- Proven scale with minimal setup
-
-### Core Value Proposition
-
-> Mímir isn't just a vector store — it's a **durable memory system for decisions**.
-
-Standard RAG systems store documents. Mímir stores **knowledge with provenance**:
-- What decisions were made?
-- What evidence supported them?
-- How have they evolved over time?
-- What contradicts what?
-
-See [design_decisions.md](design_decisions.md) for architectural decisions including DD-007 (Chunking Strategy) and DD-008 (Search Filters).
-
-#### *What is RRF (Reciprocal Rank Fusion)?
-
-RRF is a technique for combining results from multiple search methods (semantic + full-text) into a single ranked list. The challenge: semantic search returns similarity scores (0.0-1.0) while full-text search returns relevance ranks (arbitrary numbers)—these can't be directly added.
-
-RRF solves this by using **rank positions** instead of raw scores:
-
-```
-RRF_score = Σ (1 / (k + rank))
-```
-
-Where `k=60` (constant to prevent over-weighting top results) and `rank` = position in each result list.
-
-**Example**: A document ranking #2 in semantic and #5 in full-text gets:
-- Semantic: `1/(60+2) = 0.0161`
-- Full-text: `1/(60+5) = 0.0154`
-- **Combined: 0.0315**
-
-This beats a document ranking #1 in only one method (0.0164), because appearing in **both** result sets indicates higher overall relevance.
-
-Hybrid search via RRF typically outperforms either method alone—semantic catches meaning but misses exact terms; full-text catches exact matches but misses synonyms.
-
-## Architecture
-
-Mímir is a **storage API only**. It deliberately does not:
-- Call LLMs or embedding endpoints
-- Perform orchestration or workflow execution
-- Make semantic judgments or truth adjudication
-- Manage UI or presentation concerns
-
-See [requirements.md](requirements.md) for the complete requirements and non-goals.
-
-### Technology Stack
-
-| Component | Technology |
-|-----------|------------|
-| **Database** | PostgreSQL 18 + pgvector |
-| **API** | FastAPI (Python 3.13) |
-| **Data Access** | Raw SQL via psycopg v3 (no ORM) |
-| **Containerization** | Docker Compose |
-
-See [infrastructure_and_tools_development_plan.txt](infrastructure_and_tools_development_plan.txt) for detailed technical design.
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [readme.md](readme.md) | This file - project overview |
-| [requirements.md](requirements.md) | V1-V3 requirements, non-goals, and boundaries |
-| [infrastructure_and_tools_development_plan.txt](infrastructure_and_tools_development_plan.txt) | Technical implementation plan |
-| [project_tracking.md](project_tracking.md) | Issue tracking and conventions |
+Unified artifact model knowledge graph API with semantic search capabilities.
 
 ## Quick Start
 
-*Coming soon - implementation in progress*
+### Prerequisites
+
+- Docker and Docker Compose
+- `.env` file with credentials (copy from `.env.example`)
+
+### Development Mode (with Hot-Reload)
 
 ```bash
-# Clone the repository
-git clone <your-repo-url>
-cd mimir
+cd v2
 
-# Copy environment template and configure
+# Create .env file (one-time setup)
 cp .env.example .env
-# Edit .env with your values (POSTGRES_PASSWORD, DOCKER_BUILDX_BUILDER, etc.)
+# Edit .env to set POSTGRES_PASSWORD and optional API keys
 
-# Start services
+# Start all services with hot-reload
 docker compose up -d
 
-# API available at http://localhost:38000
-# Swagger docs at http://localhost:38000/docs
+# Run database migrations
+docker compose exec api python -m migrations.migrate up
 ```
 
-## Project Status
+**Access points:**
+- Landing Page: http://localhost:38000/
+- Swagger UI: http://localhost:38000/docs
+- ReDoc: http://localhost:38000/redoc
+- OpenAPI Spec: http://localhost:38000/openapi.json
+- Health Check: http://localhost:38000/health
+- PostgreSQL: localhost:35432
 
-**Phase:** V1 Complete ✅
+### How Hot-Reload Works
 
-| Phase | Status |
-|-------|--------|
-| Phase 1: Foundation | ✅ Complete |
-| Phase 2: Core Entities | ✅ Complete |
-| Phase 3: Intent & Decisions | ✅ Complete |
-| Phase 4: Spans & Relations | ✅ Complete |
-| Phase 5: Search & Embeddings | ✅ Complete |
-| Phase 6: Provenance & Polish | ✅ Complete |
-| Phase 7: Advanced RAG Features | 🚧 Planned |
+The development setup uses `docker-compose.override.yaml` (automatically combined with `docker-compose.yaml`):
 
-### Current Capabilities
-- **Artifacts**: Documents, conversations, notes with versioning
-- **Intents & Decisions**: Track reasoning and choices
-- **Spans & Relations**: Annotations and entity connections
-- **Search**: Semantic (pgvector), full-text (tsvector), hybrid (RRF)
-- **Embeddings**: Voyage AI, OpenAI, Ollama providers
-- **Provenance**: Full audit trail with actor/action tracking
-- **Multi-tenant**: Built-in tenant isolation
+```yaml
+services:
+  api:
+    volumes:
+      - ./src:/app/src:ro          # Mount local source → container
+      - ./migrations:/app/migrations:ro
+    command: ["uvicorn", "mimir.main:app", "--reload", "--reload-dir", "/app/src"]
+```
 
-See [project_tracking.md](project_tracking.md) for detailed progress.
+**Result:** Edit files in `v2/src/` → Changes apply immediately without rebuild.
 
-## License
+### Production Mode (No Hot-Reload)
 
-*TBD*
+```bash
+# Build with code baked into image
+docker compose -f docker-compose.yaml build api
 
-## Contributing
+# Run without override file
+docker compose -f docker-compose.yaml up -d
+```
 
-*TBD*
+## Port Mapping
+
+Host ports are prefixed with `3` to avoid conflicts with V1 or other services:
+
+| Service    | Container Port | Host Port |
+|------------|----------------|-----------|
+| PostgreSQL | 5432           | 35432     |
+| API        | 8000           | 38000     |
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `POSTGRES_PASSWORD` | Yes | Database password |
+| `OPENAI_API_KEY` | No | For OpenAI embeddings |
+| `OLLAMA_BASE_URL` | No | Ollama server URL (default: `http://host.docker.internal:11434`) |
+| `DEFAULT_EMBEDDING_MODEL` | No | Default model (default: `nomic-embed-text`) |
+| `LOG_LEVEL` | No | Logging level (default: `INFO`, dev: `DEBUG`) |
+
+### Embedding Providers
+
+V2 supports multiple embedding providers:
+- **Ollama** (local): `nomic-embed-text`, `mxbai-embed-large`
+- **OpenAI**: `text-embedding-3-small`, `text-embedding-3-large`
+
+## Project Structure
+
+```
+v2/
+├── docker-compose.yaml           # Production services
+├── docker-compose.override.yaml  # Development overrides (hot-reload)
+├── .env.example                  # Environment template
+├── pyproject.toml               # Python dependencies
+├── src/mimir/                   # Application source
+│   ├── main.py                  # FastAPI application
+│   ├── config.py                # Settings management
+│   ├── database.py              # psycopg connection pool
+│   ├── routers/                 # API endpoints
+│   ├── schemas/                 # Pydantic models
+│   └── services/                # Business logic
+├── migrations/                  # Database migrations
+│   ├── migrate.py               # Migration runner
+│   └── versions/                # SQL migration files
+├── infrastructure/docker/       # Dockerfiles
+└── docs/                        # Documentation
+```
+
+## API Overview
+
+V2 uses a **Unified Artifact Model** where all knowledge is stored as artifacts:
+
+- **Tenant**: Multi-tenancy isolation (all calls need `X-Tenant-ID` header)
+- **Artifact Type**: Vocabulary for artifact categories
+- **Artifact**: Universal knowledge unit (documents, chunks, intents, decisions)
+- **Relation Type**: Vocabulary for relationship types
+- **Relation**: Knowledge graph edges between artifacts
+- **Embedding**: Vector representations for semantic search
+- **Provenance Event**: Immutable audit trail
+
+### Quick API Test
+
+```bash
+# Create a tenant
+curl -X POST http://localhost:38000/tenants \
+  -H "Content-Type: application/json" \
+  -d '{"shortname": "demo", "name": "Demo Tenant", "tenant_type": "environment"}'
+
+# Response: {"id": 1, "shortname": "demo", ...}
+
+# List artifact types (requires tenant header)
+curl http://localhost:38000/artifact-types \
+  -H "X-Tenant-ID: 1"
+```
+
+## Migrations
+
+```bash
+# Apply all pending migrations
+docker compose exec api python -m migrations.migrate up
+
+# Check migration status
+docker compose exec api python -m migrations.migrate status
+
+# Rollback last migration
+docker compose exec api python -m migrations.migrate down
+```
+
+## Logs and Debugging
+
+```bash
+# View API logs
+docker compose logs -f api
+
+# View all logs
+docker compose logs -f
+
+# Check container status
+docker compose ps -a
+```
+
+## V2 vs V1 Differences
+
+| Aspect | V1 | V2 |
+|--------|----|----|
+| Entities | Intent, Decision, Artifact (separate) | Unified Artifact model |
+| Tenant types | `user` | `environment`, `project`, `experiment` |
+| Port (postgres) | 5432 | 35432 |
+| Port (API) | 8000 | 38000 |
+| Hot-reload | No | Yes (via override file) |
+| Landing page | JSON | HTML with links |
+
+## Documentation
+
+- `docs/entity-guide.md` - Entity relationships and usage patterns
+- `docs/api-design.md` - API design principles
+- `docs/data-model.md` - Database schema
+- `docs/architecture.md` - System architecture
+- `docs/search-architecture.md` - Semantic search implementation

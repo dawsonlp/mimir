@@ -1,4 +1,4 @@
--- Initialize PostgreSQL extensions and schema for Mímir
+-- Mímir V2 - Initialize PostgreSQL extensions and schema
 -- This script runs automatically on first database initialization
 
 -- Create dedicated schema for Mímir data (keeps it isolated from public schema)

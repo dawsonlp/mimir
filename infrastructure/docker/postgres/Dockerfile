@@ -1,4 +1,4 @@
-# PostgreSQL with pgvector extension
+# Mímir V2 - PostgreSQL with pgvector extension
 # Built from official postgres base for better security update cadence
 FROM postgres:18
 

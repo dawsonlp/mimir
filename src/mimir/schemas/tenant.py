@@ -1,49 +1,66 @@
-"""Pydantic schemas for tenant API operations."""
+"""Pydantic schemas for Tenant entity.
+
+Tenant provides multi-tenancy isolation. Each tenant has completely isolated data.
+All API calls (except tenant CRUD) require X-Tenant-ID header.
+
+Tenant Types:
+- environment: Default type for isolated environments
+- project: For project-specific data isolation
+- experiment: For experimental/temporary data
+
+Usage:
+    POST /tenants {"shortname": "acme", "name": "Acme Corp", "tenant_type": "environment"}
+    All subsequent calls: curl -H "X-Tenant-ID: 1" ...
+"""
 
 from datetime import datetime
-from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field
-
-
-class TenantType(str, Enum):
-    """Tenant categorization."""
-
-    environment = "environment"
-    project = "project"
-    experiment = "experiment"
+from pydantic import BaseModel, Field
 
 
 class TenantBase(BaseModel):
-    """Base tenant fields."""
+    """Base schema for tenant."""
 
-    shortname: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9_-]+$")
-    name: str = Field(..., min_length=1, max_length=255)
-    tenant_type: TenantType = TenantType.project
+    shortname: str = Field(..., description="Short unique identifier")
+    name: str = Field(..., description="Display name")
+    tenant_type: str = Field("environment", description="Type: environment, project, experiment")
+    description: str | None = Field(None, description="Description")
+    is_active: bool = Field(True, description="Whether tenant is active")
+    metadata: dict | None = Field(default_factory=dict, description="Additional metadata")
+
+
+class TenantCreate(BaseModel):
+    """Schema for creating a new tenant."""
+
+    shortname: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-z][a-z0-9_-]*$")
+    name: str = Field(..., min_length=1, max_length=200)
+    tenant_type: str = Field("environment", pattern=r"^(environment|project|experiment)$")
     description: str | None = None
-    metadata: dict = Field(default_factory=dict)
-
-
-class TenantCreate(TenantBase):
-    """Schema for creating a tenant."""
-
-    pass
+    is_active: bool = True
+    metadata: dict | None = None
 
 
 class TenantUpdate(BaseModel):
-    """Schema for updating a tenant (all fields optional)."""
+    """Schema for updating a tenant."""
 
-    name: str | None = Field(None, min_length=1, max_length=255)
+    name: str | None = None
+    tenant_type: str | None = None
     description: str | None = None
     is_active: bool | None = None
     metadata: dict | None = None
 
 
 class TenantResponse(TenantBase):
-    """Schema for tenant API responses."""
-
-    model_config = ConfigDict(from_attributes=True)
+    """Schema for tenant response."""
 
     id: int
-    is_active: bool
     created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TenantListResponse(BaseModel):
+    """Schema for listing tenants."""
+
+    items: list[TenantResponse]
+    total: int

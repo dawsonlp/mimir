@@ -1,4 +1,4 @@
-"""Database connection management for Mímir.
+"""Database connection management for Mímir V2.
 
 Uses psycopg v3 async with connection pooling.
 SQL is the implementation language - NO ORM.

@@ -1,5 +1,8 @@
-# Mímir - Docker Compose Service Orchestration
+# Mímir V2 - Docker Compose Service Orchestration
 # Port mapping: Host ports prefixed with 3 (35432, 38000) to avoid conflicts
+#
+# V2 Strategy: This runs independently from V1 during development.
+# When V2 is complete, it will replace V1 at the root level.
 
 services:
   postgres:
@@ -24,7 +27,7 @@ services:
     restart: unless-stopped
 
   api:
-    image: dawsonlp/mimir-api:latest
+    image: dawsonlp/mimir-api:v2
     ports:
       - "38000:8000"  # Host:Container - avoid common port conflicts
     environment:

@@ -1,1 +1,1 @@
-# Plain SQL migrations package
+"""V2 Database migrations for Mímir."""

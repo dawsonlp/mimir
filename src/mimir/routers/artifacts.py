@@ -1,96 +1,48 @@
-"""Artifact API endpoints.
-
-Artifacts are the primary storage entities in Mímir - canonical documents,
-conversations, and notes that form the foundation of the knowledge base.
-
-Entity Relationships:
-- Artifacts have Versions (append-only content history)
-- Artifacts can have Embeddings for semantic search
-- Artifacts can have Spans for precise text references
-- Artifacts can be linked via Relations to other entities
-- Artifacts can be associated with Intents and Decisions
-- All changes to artifacts are tracked in Provenance
-"""
+"""Artifact API endpoints (V2)."""
 
 from fastapi import APIRouter, Header, HTTPException, Query
 
 from mimir.schemas.artifact import (
     ArtifactCreate,
-    ArtifactDetailResponse,
     ArtifactListResponse,
     ArtifactResponse,
     ArtifactUpdate,
-    ArtifactVersionCreate,
     ArtifactVersionResponse,
 )
 from mimir.services import artifact_service
 
-router = APIRouter(
-    prefix="/artifacts",
-    tags=["artifacts"],
-    responses={404: {"description": "Artifact not found"}},
-)
+router = APIRouter(prefix="/artifacts", tags=["artifacts"])
 
 
-def _get_tenant_id(x_tenant_id: int = Header(..., description="Tenant ID")) -> int:
-    """Extract tenant ID from header."""
-    return x_tenant_id
-
-
-@router.post(
-    "",
-    response_model=ArtifactDetailResponse,
-    status_code=201,
-    summary="Create artifact",
-    description="""
-Create a new artifact with initial content version.
-
-**Semantic Intent**: Artifacts are canonical source documents - conversations,
-documents, or notes that preserve original content unchanged.
-
-**Relationships Created**:
-- Creates initial ArtifactVersion (v1) with content and SHA-256 hash
-- Can later add Embeddings for semantic search
-- Can later add Spans for text references
-""",
-)
+@router.post("", response_model=ArtifactResponse, status_code=201)
 async def create_artifact(
     data: ArtifactCreate,
-    x_tenant_id: int = Header(..., description="Tenant ID for data isolation"),
-) -> ArtifactDetailResponse:
-    """Create a new artifact with initial content version."""
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
+) -> ArtifactResponse:
+    """Create a new artifact."""
     return await artifact_service.create_artifact(x_tenant_id, data)
 
 
-@router.get(
-    "",
-    response_model=ArtifactListResponse,
-    summary="List artifacts",
-    description="List all artifacts for the tenant. Filter by type (conversation, document, note).",
-)
+@router.get("", response_model=ArtifactListResponse)
 async def list_artifacts(
-    x_tenant_id: int = Header(..., description="Tenant ID for data isolation"),
-    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    artifact_type: str | None = Query(None, description="Filter by type: conversation, document, note"),
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    artifact_type: str | None = Query(None),
+    parent_artifact_id: int | None = Query(None),
 ) -> ArtifactListResponse:
-    """List artifacts for the tenant with pagination."""
+    """List artifacts."""
     return await artifact_service.list_artifacts(
-        x_tenant_id, page, page_size, artifact_type
+        x_tenant_id, page, page_size, artifact_type, parent_artifact_id
     )
 
 
-@router.get(
-    "/{artifact_id}",
-    response_model=ArtifactDetailResponse,
-    summary="Get artifact",
-    description="Get artifact metadata and latest version content. Includes content_hash for integrity verification.",
-)
+@router.get("/{artifact_id}", response_model=ArtifactResponse)
 async def get_artifact(
     artifact_id: int,
-    x_tenant_id: int = Header(..., description="Tenant ID for data isolation"),
-) -> ArtifactDetailResponse:
-    """Get artifact by ID with latest version."""
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
+) -> ArtifactResponse:
+    """Get artifact by ID."""
     result = await artifact_service.get_artifact(artifact_id, x_tenant_id)
     if not result:
         raise HTTPException(status_code=404, detail="Artifact not found")
@@ -101,9 +53,9 @@ async def get_artifact(
 async def update_artifact(
     artifact_id: int,
     data: ArtifactUpdate,
-    x_tenant_id: int = Header(..., description="Tenant ID"),
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
 ) -> ArtifactResponse:
-    """Update artifact metadata."""
+    """Update an artifact."""
     result = await artifact_service.update_artifact(artifact_id, x_tenant_id, data)
     if not result:
         raise HTTPException(status_code=404, detail="Artifact not found")
@@ -113,49 +65,68 @@ async def update_artifact(
 @router.delete("/{artifact_id}", status_code=204)
 async def delete_artifact(
     artifact_id: int,
-    x_tenant_id: int = Header(..., description="Tenant ID"),
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
 ) -> None:
-    """Delete an artifact and all its versions."""
+    """Delete an artifact."""
     deleted = await artifact_service.delete_artifact(artifact_id, x_tenant_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Artifact not found")
+
+
+@router.get("/{artifact_id}/children", response_model=list[ArtifactResponse])
+async def get_artifact_children(
+    artifact_id: int,
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
+) -> list[ArtifactResponse]:
+    """Get child artifacts."""
+    return await artifact_service.get_children(artifact_id, x_tenant_id)
+
+
+# Version endpoints
+@router.get("/{artifact_id}/versions", response_model=list[ArtifactVersionResponse])
+async def get_artifact_versions(
+    artifact_id: int,
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
+) -> list[ArtifactVersionResponse]:
+    """Get all versions of an artifact."""
+    return await artifact_service.get_versions(artifact_id, x_tenant_id)
+
+
+@router.get(
+    "/{artifact_id}/versions/{version_number}",
+    response_model=ArtifactVersionResponse,
+)
+async def get_artifact_version(
+    artifact_id: int,
+    version_number: int,
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
+) -> ArtifactVersionResponse:
+    """Get a specific version."""
+    result = await artifact_service.get_version(
+        artifact_id, version_number, x_tenant_id
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return result
 
 
 @router.post(
     "/{artifact_id}/versions",
     response_model=ArtifactVersionResponse,
     status_code=201,
-    summary="Add version",
-    description="""
-Add a new content version to an artifact.
-
-**Semantic Intent**: Versions are append-only - original content is never modified.
-Each version gets its own SHA-256 content_hash for integrity and deduplication.
-
-**Design**: Supports the requirement that canonical content is never destroyed.
-""",
 )
-async def add_version(
+async def create_artifact_version(
     artifact_id: int,
-    data: ArtifactVersionCreate,
-    x_tenant_id: int = Header(..., description="Tenant ID for data isolation"),
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
+    title: str | None = None,
+    content: str | None = None,
+    change_reason: str | None = None,
+    changed_by: str | None = None,
 ) -> ArtifactVersionResponse:
-    """Add a new version to an artifact."""
-    result = await artifact_service.add_version(artifact_id, x_tenant_id, data)
+    """Create a new version."""
+    result = await artifact_service.create_version(
+        artifact_id, x_tenant_id, title, content, change_reason, changed_by
+    )
     if not result:
         raise HTTPException(status_code=404, detail="Artifact not found")
     return result
-
-
-@router.get(
-    "/{artifact_id}/versions",
-    response_model=list[ArtifactVersionResponse],
-    summary="List versions",
-    description="Get complete version history of an artifact. Versions are ordered newest-first.",
-)
-async def get_versions(
-    artifact_id: int,
-    x_tenant_id: int = Header(..., description="Tenant ID for data isolation"),
-) -> list[ArtifactVersionResponse]:
-    """Get all versions of an artifact."""
-    return await artifact_service.get_versions(artifact_id, x_tenant_id)

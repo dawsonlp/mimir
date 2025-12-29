@@ -1,8 +1,10 @@
-"""Tenant service - database operations for tenants."""
+"""Tenant service - database operations for tenants (V2)."""
 
 from mimir.database import get_connection
-from mimir.models import SCHEMA_NAME
 from mimir.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
+
+# Schema name for all tables
+SCHEMA_NAME = "mimirdata"
 
 
 async def create_tenant(data: TenantCreate) -> TenantResponse:
@@ -10,17 +12,18 @@ async def create_tenant(data: TenantCreate) -> TenantResponse:
     async with get_connection() as conn:
         result = await conn.execute(
             f"""
-            INSERT INTO {SCHEMA_NAME}.tenants
-                (shortname, name, tenant_type, description, metadata)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO {SCHEMA_NAME}.tenant
+                (shortname, name, tenant_type, description, is_active, metadata)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING id, shortname, name, tenant_type, description,
                       is_active, created_at, metadata
             """,
             (
                 data.shortname,
                 data.name,
-                data.tenant_type.value,
+                data.tenant_type,  # TEXT now, not enum
                 data.description,
+                data.is_active,
                 data.metadata,
             ),
         )
@@ -46,7 +49,7 @@ async def get_tenant(tenant_id: int) -> TenantResponse | None:
             f"""
             SELECT id, shortname, name, tenant_type, description,
                    is_active, created_at, metadata
-            FROM {SCHEMA_NAME}.tenants
+            FROM {SCHEMA_NAME}.tenant
             WHERE id = %s
             """,
             (tenant_id,),
@@ -75,7 +78,7 @@ async def get_tenant_by_shortname(shortname: str) -> TenantResponse | None:
             f"""
             SELECT id, shortname, name, tenant_type, description,
                    is_active, created_at, metadata
-            FROM {SCHEMA_NAME}.tenants
+            FROM {SCHEMA_NAME}.tenant
             WHERE shortname = %s
             """,
             (shortname,),
@@ -103,7 +106,7 @@ async def list_tenants(active_only: bool = True) -> list[TenantResponse]:
         query = f"""
             SELECT id, shortname, name, tenant_type, description,
                    is_active, created_at, metadata
-            FROM {SCHEMA_NAME}.tenants
+            FROM {SCHEMA_NAME}.tenant
         """
         if active_only:
             query += " WHERE is_active = true"
@@ -135,6 +138,9 @@ async def update_tenant(tenant_id: int, data: TenantUpdate) -> TenantResponse | 
     if data.name is not None:
         updates.append("name = %s")
         params.append(data.name)
+    if data.tenant_type is not None:
+        updates.append("tenant_type = %s")
+        params.append(data.tenant_type)
     if data.description is not None:
         updates.append("description = %s")
         params.append(data.description)
@@ -153,7 +159,7 @@ async def update_tenant(tenant_id: int, data: TenantUpdate) -> TenantResponse | 
     async with get_connection() as conn:
         result = await conn.execute(
             f"""
-            UPDATE {SCHEMA_NAME}.tenants
+            UPDATE {SCHEMA_NAME}.tenant
             SET {", ".join(updates)}
             WHERE id = %s
             RETURNING id, shortname, name, tenant_type, description,
