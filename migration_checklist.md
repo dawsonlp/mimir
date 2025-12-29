@@ -93,38 +93,51 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
 
 **Note:** V2 migrations are a clean, rationalized design from scratch — not V1's incremental changes. V1 had 10 migrations reflecting development history; V2 consolidates to 6 logical units.
 
-- [ ] Create v2/migrations/ structure
-- [ ] **001_schema_and_tenants.up.sql**
-  - [ ] Create `mimirdata` schema
-  - [ ] Create all enums (artifact_type, entity_type, relation_type, span_type, etc.)
-  - [ ] Create tenants table with all columns from start
-- [ ] **002_artifacts.up.sql**
-  - [ ] Artifacts table with extended type enum (includes intent, decision, analysis, etc.)
-  - [ ] Artifact_versions table
-  - [ ] Full-text search columns (search_vector) from start
-  - [ ] source, source_system, external_id columns from start
-  - [ ] GIN indexes for FTS
-- [ ] **003_relations.up.sql**
-  - [ ] Relations table with unified entity_type enum (artifact, artifact_version, span only)
-  - [ ] All relation_type values from start
-  - [ ] Indexes for bidirectional queries
-- [ ] **004_spans.up.sql**
-  - [ ] Spans table with all span_type values
-  - [ ] Indexes
-- [ ] **005_embeddings.up.sql**
-  - [ ] Embeddings table with vector(3072) for max dimensions
-  - [ ] Model column as TEXT (not enum) for flexibility
-  - [ ] HNSW index for approximate nearest neighbor
-  - [ ] Chunk metadata columns
-- [ ] **006_provenance.up.sql**
-  - [ ] Provenance_events table (append-only audit log)
-  - [ ] All provenance enums from start
-  - [ ] Indexes for entity lookups and time queries
-- [ ] **schema_migrations table** (created by migrate.py, not a migration file)
-  - [ ] Tracks applied migrations
-- [ ] Create corresponding .down.sql files
-- [ ] Create migrate.py runner (port from V1)
-- [ ] Run migrations and verify schema created
+- [x] Create v2/migrations/ structure ✅
+- [x] **001_schema_and_tenant.up.sql** ✅
+  - [x] Create `mimirdata` schema (idempotent)
+  - [x] Create all enums (artifact_type, entity_type, relation_type, span_type, provenance_action, provenance_actor_type)
+  - [x] Create tenant table with all columns from start
+- [x] **002_artifact.up.sql** ✅
+  - [x] artifact table with extended type enum (includes intent, decision, analysis, etc.)
+  - [x] artifact_version table
+  - [x] Full-text search columns (search_vector) from start
+  - [x] source, source_system, external_id columns from start
+  - [x] GIN indexes for FTS
+  - [x] Triggers for auto-updating search_vector
+- [x] **003_relation.up.sql** ✅
+  - [x] relation table with unified entity_type enum (artifact, artifact_version, span only)
+  - [x] All relation_type values from start
+  - [x] Indexes for bidirectional queries
+  - [x] Self-reference prevention constraint
+- [x] **004_span.up.sql** ✅
+  - [x] span table with all span_type values
+  - [x] Indexes
+  - [x] Valid offset constraint
+- [x] **005_embedding.up.sql** ✅
+  - [x] embedding table with vector(2000) (HNSW max limit)
+  - [x] Model column as TEXT (not enum) for flexibility
+  - [x] HNSW index for approximate nearest neighbor (cosine distance)
+  - [x] Chunk metadata columns
+- [x] **006_provenance.up.sql** ✅
+  - [x] provenance_event table (append-only audit log)
+  - [x] All provenance enums from start
+  - [x] Indexes for entity lookups and time queries
+- [x] **schema_migrations table** (created by migrate.py, not a migration file) ✅
+  - [x] Tracks applied migrations
+- [x] Create corresponding .down.sql files ✅
+- [x] Create migrate.py runner (port from V1) ✅
+- [x] Run migrations and verify schema created ✅
+
+**Tables created:**
+- `mimirdata.tenant`
+- `mimirdata.artifact`
+- `mimirdata.artifact_version`
+- `mimirdata.relation`
+- `mimirdata.span`
+- `mimirdata.embedding`
+- `mimirdata.provenance_event`
+- `mimirdata.schema_migrations`
 
 ---
 
@@ -324,9 +337,11 @@ POST /api/v1/relations
 |-------|--------|----------|
 | Phase 1: Documentation | **Complete** | ▓▓▓▓▓▓▓▓▓▓ 100% |
 | Phase 2: Infrastructure | **Complete** | ▓▓▓▓▓▓▓▓▓▓ 100% |
-| Phase 3: Database Schema | Not Started | ░░░░░░░░░░ 0% |
+| Phase 3: Database Schema | **Complete** | ▓▓▓▓▓▓▓▓▓▓ 100% |
 | Phase 4: Core Implementation | Not Started | ░░░░░░░░░░ 0% |
 | Phase 5: Testing & Validation | Not Started | ░░░░░░░░░░ 0% |
 | Phase 6: Final Replacement | Not Started | ░░░░░░░░░░ 0% |
 
 **Last Updated**: December 28, 2025
+
+**Note on Phase 3:** Used singular table names (artifact, not artifacts) per standard DB convention. HNSW index limited to 2000 dimensions (pgvector constraint).
