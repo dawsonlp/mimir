@@ -1,120 +1,117 @@
 -- Mímir V2 Migration 002: Artifact and Artifact Version
--- Creates the core content tables with full-text search support
+-- Core content storage with FK to artifact_type vocabulary
 
 -- =============================================================================
--- ARTIFACT TABLE - All content (raw and derived)
+-- ARTIFACT TABLE - Core content entity
 -- =============================================================================
 
 CREATE TABLE mimirdata.artifact (
     id SERIAL PRIMARY KEY,
     tenant_id INT NOT NULL REFERENCES mimirdata.tenant(id) ON DELETE CASCADE,
-    artifact_type mimirdata.artifact_type NOT NULL,
-    external_id TEXT,                    -- Original source ID (e.g., ChatGPT conversation ID)
-    source TEXT,                         -- Origin category (import, api, user, derived)
-    source_system TEXT,                  -- External system name (chatgpt, confluence, github)
-    title TEXT,                          -- Optional title/summary
+    artifact_type TEXT NOT NULL REFERENCES mimirdata.artifact_type(code),
+    
+    -- Hierarchy (self-referential for parent/child)
+    parent_artifact_id INT REFERENCES mimirdata.artifact(id) ON DELETE SET NULL,
+    
+    -- Positional info (for chunks, quotes, highlights, etc.)
+    start_offset INT,                    -- Character position start
+    end_offset INT,                      -- Character position end
+    position_metadata JSONB,             -- Additional position info (page, line, etc.)
+    
+    -- Content
+    title TEXT,
+    content TEXT,
+    content_hash TEXT,                   -- For deduplication
+    
+    -- Source tracking
+    source TEXT,                         -- Origin: 'import', 'manual', 'generated'
+    source_system TEXT,                  -- External system: 'chatgpt', 'notion', etc.
+    external_id TEXT,                    -- ID in source system
+    
+    -- Full-text search
+    search_vector tsvector GENERATED ALWAYS AS (
+        setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
+        setweight(to_tsvector('english', coalesce(content, '')), 'B')
+    ) STORED,
+    
+    -- Timestamps
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    metadata JSONB DEFAULT '{}'::jsonb,  -- Type-specific fields (status, rationale, etc.)
-    search_vector TSVECTOR               -- Full-text search index
+    
+    -- Extensible properties
+    metadata JSONB DEFAULT '{}'::jsonb
 );
 
 -- Primary lookups
 CREATE INDEX idx_artifact_tenant ON mimirdata.artifact (tenant_id);
 CREATE INDEX idx_artifact_type ON mimirdata.artifact (tenant_id, artifact_type);
-CREATE INDEX idx_artifact_source ON mimirdata.artifact (tenant_id, source);
-CREATE INDEX idx_artifact_source_system ON mimirdata.artifact (tenant_id, source_system);
-CREATE INDEX idx_artifact_created ON mimirdata.artifact (tenant_id, created_at DESC);
+CREATE INDEX idx_artifact_parent ON mimirdata.artifact (parent_artifact_id) WHERE parent_artifact_id IS NOT NULL;
 
--- External ID lookup (for deduplication during import)
-CREATE INDEX idx_artifact_external_id ON mimirdata.artifact (tenant_id, source_system, external_id)
+-- Source tracking indexes
+CREATE INDEX idx_artifact_source ON mimirdata.artifact (tenant_id, source) WHERE source IS NOT NULL;
+CREATE INDEX idx_artifact_source_system ON mimirdata.artifact (tenant_id, source_system) WHERE source_system IS NOT NULL;
+CREATE UNIQUE INDEX idx_artifact_external_id ON mimirdata.artifact (tenant_id, source_system, external_id) 
     WHERE external_id IS NOT NULL;
 
--- Full-text search (GIN index)
+-- Content deduplication
+CREATE INDEX idx_artifact_content_hash ON mimirdata.artifact (tenant_id, content_hash) WHERE content_hash IS NOT NULL;
+
+-- Full-text search index
 CREATE INDEX idx_artifact_search ON mimirdata.artifact USING GIN (search_vector);
 
--- JSONB metadata queries
-CREATE INDEX idx_artifact_metadata ON mimirdata.artifact USING GIN (metadata);
+-- Timestamp for queries
+CREATE INDEX idx_artifact_created ON mimirdata.artifact (tenant_id, created_at DESC);
 
-COMMENT ON TABLE mimirdata.artifact IS 'All content - raw and derived - with type discrimination';
-COMMENT ON COLUMN mimirdata.artifact.artifact_type IS 'Type discriminator for content category';
-COMMENT ON COLUMN mimirdata.artifact.external_id IS 'Original ID from source system for deduplication';
-COMMENT ON COLUMN mimirdata.artifact.source IS 'How the artifact was created: import, api, user, derived';
-COMMENT ON COLUMN mimirdata.artifact.source_system IS 'External system name: chatgpt, confluence, github, etc.';
-COMMENT ON COLUMN mimirdata.artifact.search_vector IS 'Precomputed tsvector for full-text search';
+COMMENT ON TABLE mimirdata.artifact IS 'Core content entity - all content types are artifacts';
+COMMENT ON COLUMN mimirdata.artifact.artifact_type IS 'FK to artifact_type vocabulary table';
+COMMENT ON COLUMN mimirdata.artifact.start_offset IS 'Character offset for positional types (chunk, quote, etc.)';
+COMMENT ON COLUMN mimirdata.artifact.position_metadata IS 'Additional position info: page number, paragraph, etc.';
 
 -- =============================================================================
--- ARTIFACT_VERSION TABLE - Append-only content history
+-- ARTIFACT VERSION TABLE - Version history
 -- =============================================================================
 
 CREATE TABLE mimirdata.artifact_version (
     id SERIAL PRIMARY KEY,
     artifact_id INT NOT NULL REFERENCES mimirdata.artifact(id) ON DELETE CASCADE,
     version_number INT NOT NULL,
-    content TEXT NOT NULL,               -- Full content for this version
-    content_hash TEXT,                   -- SHA-256 for deduplication
+    
+    -- Snapshot of content at this version
+    title TEXT,
+    content TEXT,
+    content_hash TEXT,
+    
+    -- Change metadata
+    change_reason TEXT,
+    changed_by TEXT,
+    
+    -- Timestamps
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_by TEXT                      -- User or system that created this version
+    
+    -- Version metadata
+    metadata JSONB DEFAULT '{}'::jsonb,
+    
+    UNIQUE (artifact_id, version_number)
 );
 
--- Ensure unique version numbers per artifact
-ALTER TABLE mimirdata.artifact_version 
-    ADD CONSTRAINT artifact_version_unique_version UNIQUE (artifact_id, version_number);
-
--- Primary lookups
 CREATE INDEX idx_artifact_version_artifact ON mimirdata.artifact_version (artifact_id);
-CREATE INDEX idx_artifact_version_hash ON mimirdata.artifact_version (content_hash)
-    WHERE content_hash IS NOT NULL;
+CREATE INDEX idx_artifact_version_created ON mimirdata.artifact_version (created_at DESC);
 
-COMMENT ON TABLE mimirdata.artifact_version IS 'Append-only content history - content is never overwritten';
-COMMENT ON COLUMN mimirdata.artifact_version.version_number IS 'Sequential version (1, 2, 3...)';
-COMMENT ON COLUMN mimirdata.artifact_version.content_hash IS 'SHA-256 hash for content deduplication';
-COMMENT ON COLUMN mimirdata.artifact_version.created_by IS 'User or system identifier that created this version';
+COMMENT ON TABLE mimirdata.artifact_version IS 'Immutable version history for artifacts';
 
 -- =============================================================================
--- TRIGGER: Auto-update search_vector on artifact insert/update
+-- UPDATE TRIGGER - Auto-update updated_at
 -- =============================================================================
 
-CREATE OR REPLACE FUNCTION mimirdata.update_artifact_search_vector()
+CREATE OR REPLACE FUNCTION mimirdata.update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.search_vector := to_tsvector('english', COALESCE(NEW.title, ''));
-    NEW.updated_at := now();
+    NEW.updated_at = now();
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trigger_artifact_search_vector
-    BEFORE INSERT OR UPDATE ON mimirdata.artifact
+CREATE TRIGGER artifact_updated_at
+    BEFORE UPDATE ON mimirdata.artifact
     FOR EACH ROW
-    EXECUTE FUNCTION mimirdata.update_artifact_search_vector();
-
--- =============================================================================
--- TRIGGER: Update artifact's search_vector when version content changes
--- =============================================================================
-
-CREATE OR REPLACE FUNCTION mimirdata.update_artifact_from_version()
-RETURNS TRIGGER AS $$
-DECLARE
-    artifact_title TEXT;
-BEGIN
-    -- Get the artifact's title
-    SELECT title INTO artifact_title
-    FROM mimirdata.artifact
-    WHERE id = NEW.artifact_id;
-    
-    -- Update the artifact's search_vector with combined title + content
-    UPDATE mimirdata.artifact
-    SET search_vector = to_tsvector('english', 
-            COALESCE(artifact_title, '') || ' ' || COALESCE(NEW.content, '')),
-        updated_at = now()
-    WHERE id = NEW.artifact_id;
-    
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trigger_artifact_version_search
-    AFTER INSERT ON mimirdata.artifact_version
-    FOR EACH ROW
-    EXECUTE FUNCTION mimirdata.update_artifact_from_version();
+    EXECUTE FUNCTION mimirdata.update_updated_at();

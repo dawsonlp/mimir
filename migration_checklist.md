@@ -91,37 +91,36 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
 
 ## Phase 3: Database Schema
 
-**Note:** V2 migrations are a clean, rationalized design from scratch — not V1's incremental changes. V1 had 10 migrations reflecting development history; V2 consolidates to 6 logical units.
+**Note:** V2 migrations are a clean, rationalized design from scratch — not V1's incremental changes. V1 had 10 migrations reflecting development history; V2 consolidates to 5 logical units.
+
+**Key Schema Decision:** Vocabulary tables (not ENUMs) for extensible types. See `v2/docs/schema-review.md` for rationale.
 
 - [x] Create v2/migrations/ structure ✅
 - [x] **001_schema_and_tenant.up.sql** ✅
   - [x] Create `mimirdata` schema (idempotent)
-  - [x] Create all enums (artifact_type, entity_type, relation_type, span_type, provenance_action, provenance_actor_type)
-  - [x] Create tenant table with all columns from start
+  - [x] Create **vocabulary tables** (artifact_type, relation_type, tenant_type) with seed data
+  - [x] Create **system ENUMs** (entity_type, provenance_action, provenance_actor_type)
+  - [x] Create tenant table with FK to tenant_type
 - [x] **002_artifact.up.sql** ✅
-  - [x] artifact table with extended type enum (includes intent, decision, analysis, etc.)
+  - [x] artifact table with FK to artifact_type vocabulary
   - [x] artifact_version table
+  - [x] Positional columns (start_offset, end_offset, position_metadata) for chunks/quotes
   - [x] Full-text search columns (search_vector) from start
   - [x] source, source_system, external_id columns from start
   - [x] GIN indexes for FTS
-  - [x] Triggers for auto-updating search_vector
+  - [x] Triggers for auto-updating updated_at
 - [x] **003_relation.up.sql** ✅
-  - [x] relation table with unified entity_type enum (artifact, artifact_version, span only)
-  - [x] All relation_type values from start
+  - [x] relation table with FK to relation_type vocabulary
+  - [x] entity_type enum (artifact, artifact_version only - spans absorbed)
   - [x] Indexes for bidirectional queries
-  - [x] Self-reference prevention constraint
-- [x] **004_span.up.sql** ✅
-  - [x] span table with all span_type values
-  - [x] Indexes
-  - [x] Valid offset constraint
-- [x] **005_embedding.up.sql** ✅
+  - [x] Unique constraint preventing duplicates
+- [x] **004_embedding.up.sql** ✅
   - [x] embedding table with vector(2000) (HNSW max limit)
   - [x] Model column as TEXT (not enum) for flexibility
   - [x] HNSW index for approximate nearest neighbor (cosine distance)
-  - [x] Chunk metadata columns
-- [x] **006_provenance.up.sql** ✅
+- [x] **005_provenance.up.sql** ✅
   - [x] provenance_event table (append-only audit log)
-  - [x] All provenance enums from start
+  - [x] Uses system ENUMs (provenance_action, provenance_actor_type)
   - [x] Indexes for entity lookups and time queries
 - [x] **schema_migrations table** (created by migrate.py, not a migration file) ✅
   - [x] Tracks applied migrations
@@ -130,14 +129,21 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
 - [x] Run migrations and verify schema created ✅
 
 **Tables created:**
+- `mimirdata.artifact_type` (vocabulary - 18 types)
+- `mimirdata.relation_type` (vocabulary - 16 types with inverse_code)
+- `mimirdata.tenant_type` (vocabulary - 3 types)
 - `mimirdata.tenant`
 - `mimirdata.artifact`
 - `mimirdata.artifact_version`
 - `mimirdata.relation`
-- `mimirdata.span`
 - `mimirdata.embedding`
 - `mimirdata.provenance_event`
 - `mimirdata.schema_migrations`
+
+**System ENUMs created:**
+- `entity_type` (artifact, artifact_version)
+- `provenance_action` (create, update, delete, supersede, archive, restore)
+- `provenance_actor_type` (user, system, llm, api_client, migration)
 
 ---
 
@@ -151,28 +157,31 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
 - [ ] **main.py** (modify) - Remove intent/decision router registrations
 
 ### Services
-- [ ] **tenant_service.py** (port)
-- [ ] **artifact_service.py** (modify) - Extended type enum, absorbs intent/decision patterns
-- [ ] **relation_service.py** (modify) - Simplified entity_type enum
-- [ ] **span_service.py** (port)
+- [ ] **tenant_service.py** (modify) - FK to tenant_type vocabulary
+- [ ] **artifact_service.py** (modify) - FK to artifact_type vocabulary, absorbs intent/decision/span patterns
+- [ ] **artifact_type_service.py** (new) - CRUD for artifact_type vocabulary
+- [ ] **relation_service.py** (modify) - FK to relation_type vocabulary
+- [ ] **relation_type_service.py** (new) - CRUD for relation_type vocabulary
 - [ ] **embedding_service.py** (port)
 - [ ] **search_service.py** (modify) - Update entity_type references
 - [ ] **provenance_service.py** (modify) - Update entity_type enum
 
 ### Routers
 - [ ] **tenants.py** (port)
-- [ ] **artifacts.py** (modify) - Extended type enum, /types endpoint
-- [ ] **relations.py** (modify) - Simplified entity_type validation
-- [ ] **spans.py** (port)
+- [ ] **artifacts.py** (modify) - FK validation, /artifact-types endpoint
+- [ ] **artifact_types.py** (new) - CRUD for artifact_type vocabulary
+- [ ] **relations.py** (modify) - FK validation
+- [ ] **relation_types.py** (new) - CRUD for relation_type vocabulary
 - [ ] **embeddings.py** (port)
 - [ ] **search.py** (port)
 - [ ] **provenance.py** (modify) - Update entity_type enum
 
 ### Schemas (Pydantic)
-- [ ] **tenant.py** (port)
-- [ ] **artifact.py** (modify) - Extended ArtifactType enum
-- [ ] **relation.py** (modify) - Simplified EntityType enum
-- [ ] **span.py** (port)
+- [ ] **tenant.py** (modify) - tenant_type as TEXT
+- [ ] **artifact.py** (modify) - artifact_type as TEXT, positional columns
+- [ ] **artifact_type.py** (new) - Vocabulary schema
+- [ ] **relation.py** (modify) - relation_type as TEXT
+- [ ] **relation_type.py** (new) - Vocabulary schema with inverse_code
 - [ ] **embedding.py** (port)
 - [ ] **search.py** (port)
 - [ ] **provenance.py** (modify) - Update entity_type references
@@ -227,66 +236,88 @@ These V1 files will not be recreated in V2 — their functionality is absorbed b
 | `intents.py` (router) | `/artifacts` with `artifact_type=intent` |
 | `intent_service.py` | `artifact_service.py` |
 | `intent.py` (schema) | `artifact.py` with intent type |
-| `003_create_intents.up.sql` | Part of `002_artifacts.up.sql` (artifact_type enum) |
+| `003_create_intents.up.sql` | Part of `artifact_type` vocabulary |
 | `decisions.py` (router) | `/artifacts` with `artifact_type=decision` |
 | `decision_service.py` | `artifact_service.py` |
 | `decision.py` (schema) | `artifact.py` with decision type |
-| `004_create_decisions.up.sql` | Part of `002_artifacts.up.sql` (artifact_type enum) |
-| `intent_groups` table | Replaced by artifacts with relations |
+| `004_create_decisions.up.sql` | Part of `artifact_type` vocabulary |
+| `spans.py` (router) | `/artifacts` with positional types (chunk, quote, etc.) |
+| `span_service.py` | `artifact_service.py` with start_offset/end_offset |
+| `span.py` (schema) | `artifact.py` with positional columns |
+| `005_create_spans.up.sql` | Columns in `002_artifacts.up.sql` |
+| `intent_groups` table | `artifact_type=intent_group` with relations |
 
 ---
 
 ## Key Design Changes in V2
 
-### Artifact Types (Extended Enum)
+### Vocabulary Tables (Not ENUMs)
+
+**Design Decision:** Extensible types use vocabulary tables with FK constraints for flexibility. System types stay as ENUMs for stability.
+
+### Artifact Types (Vocabulary Table)
 
 ```sql
-CREATE TYPE artifact_type AS ENUM (
-    -- Raw content
-    'conversation',
-    'document', 
-    'note',
-    'chunk',
-    -- Derived knowledge
-    'intent',
-    'decision',
-    'analysis',
-    'summary',
-    'conclusion',
-    'finding',
-    'question',
-    'answer'
+CREATE TABLE artifact_type (
+    code TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    description TEXT,
+    category TEXT,  -- 'content', 'positional', 'derived'
+    is_active BOOLEAN DEFAULT true,
+    sort_order INT
 );
+-- 18 seeded types including intent_group
 ```
 
-### Entity Types (Simplified)
+| Category | Types |
+|----------|-------|
+| content | conversation, document, note |
+| positional | chunk, quote, highlight, annotation, reference, bookmark |
+| derived | intent, intent_group, decision, analysis, summary, conclusion, finding, question, answer |
+
+### Relation Types (Vocabulary Table)
+
+```sql
+CREATE TABLE relation_type (
+    code TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    inverse_code TEXT,      -- Links to inverse relation
+    is_symmetric BOOLEAN,   -- true if A→B implies B→A
+    ...
+);
+-- 16 seeded types with inverse relationships
+```
+
+| Relation | Inverse | Symmetric |
+|----------|---------|-----------|
+| references | referenced_by | no |
+| supports | supported_by | no |
+| contradicts | - | yes |
+| derived_from | source_of | no |
+| supersedes | superseded_by | no |
+| related_to | - | yes |
+| parent_of | child_of | no |
+| implements | implemented_by | no |
+| resolves | resolved_by | no |
+
+### Entity Types (System ENUM - Fixed)
 
 ```sql
 CREATE TYPE entity_type AS ENUM (
     'artifact',
-    'artifact_version',
-    'span'
+    'artifact_version'
 );
 ```
 
-Note: `intent`, `intent_group`, and `decision` are now artifact types, not separate entity types.
+Note: Spans absorbed into artifacts as positional types (chunk, quote, etc.). No separate span entity.
 
-### Relation Types (Unchanged)
+### Spans Absorbed into Artifacts
 
-```sql
-CREATE TYPE relation_type AS ENUM (
-    'references',
-    'supports',
-    'contradicts',
-    'derived_from',
-    'supersedes',
-    'related_to',
-    'parent_of',
-    'child_of',
-    'implements',
-    'resolves'
-);
-```
+V1 had a separate `span` table. V2 handles positional content as artifacts with:
+- `artifact_type` = chunk, quote, highlight, annotation, etc.
+- `parent_artifact_id` = reference to source artifact
+- `start_offset`, `end_offset` = character positions
+- `position_metadata` = JSONB for page, line, paragraph info
 
 ### Common Patterns for Derived Knowledge
 

@@ -2,6 +2,10 @@
 
 # Environment files (contain sensitive configuration)
 .env
+
+# Private documents (not for repo)
+original_conversation.txt
+docs/original_conversation.txt
 .env.local
 .env.*.local
 
