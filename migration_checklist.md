@@ -69,7 +69,21 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
 
 ---
 
-## Phase 2: Database Schema
+## Phase 2: Infrastructure
+
+- [ ] **pyproject.toml** (port from V1)
+- [ ] **docker-compose.yaml** (port from V1, update paths to v2/)
+- [ ] **docker-compose.override.yaml** (port from V1)
+- [ ] **infrastructure/docker/api/Dockerfile** (port from V1)
+- [ ] **infrastructure/docker/postgres/Dockerfile** (port from V1)
+- [ ] **init-scripts/01-create-extensions.sql** (port from V1)
+- [ ] **.env.example** (port from V1)
+- [ ] **.gitignore** and **.dockerignore** (port from V1)
+- [ ] Test Docker Compose starts successfully
+
+---
+
+## Phase 3: Database Schema
 
 - [ ] Create v2/migrations/ structure
 - [ ] **001_create_tenants.up.sql** (port from V1)
@@ -80,14 +94,16 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
 - [ ] **006_create_provenance.up.sql** (port from V1)
 - [ ] Create corresponding .down.sql files
 - [ ] Create migrate.py runner (port from V1)
+- [ ] Run migrations and verify schema created
 
 ---
 
-## Phase 3: Core Implementation
+## Phase 4: Core Implementation
 
 - [ ] Create v2/src/mimir/ package structure
 - [ ] **database.py** - Connection pool (port from V1)
 - [ ] **config.py** - Settings (port from V1)
+- [ ] **main.py** - FastAPI application
 
 ### Services
 - [ ] **tenant_service.py** (port from V1)
@@ -125,17 +141,6 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
 
 ---
 
-## Phase 4: Infrastructure
-
-- [ ] **docker-compose.yaml** (port from V1, update paths)
-- [ ] **infrastructure/docker/api/Dockerfile** (port from V1)
-- [ ] **infrastructure/docker/postgres/Dockerfile** (port from V1)
-- [ ] **init-scripts/01-create-extensions.sql** (port from V1)
-- [ ] **pyproject.toml** (port from V1)
-- [ ] **.env.example** (port from V1)
-
----
-
 ## Phase 5: Testing & Validation
 
 - [ ] Create tests/ structure
@@ -148,12 +153,23 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
 
 ---
 
-## Phase 6: Documentation & Cleanup
+## Phase 6: Final Replacement & Cleanup
 
-- [ ] Update README.md for V2
-- [ ] Update design_decisions.md with DD-009 (Unified Artifact Model)
-- [ ] Archive V1 reference (or remove)
+Once V2 is validated and working:
+
+- [ ] Delete all V1 source files (`src/mimir/`, `migrations/`, etc.)
+- [ ] Move `v2/src/` to `src/`
+- [ ] Move `v2/migrations/` to `migrations/`
+- [ ] Move `v2/infrastructure/` to `infrastructure/`
+- [ ] Update root `pyproject.toml` (or move v2 version)
+- [ ] Update root `docker-compose.yaml` (or move v2 version)
+- [ ] Update root `README.md` for V2
+- [ ] Move `v2/docs/` content to root docs
+- [ ] Delete empty `v2/` directory
+- [ ] Run full test suite to verify
 - [ ] Final commit and push
+
+**End State:** Single project with V2 implementation at root level. No `v2/` directory.
 
 ---
 
@@ -272,10 +288,10 @@ POST /api/v1/relations
 | Phase | Status | Progress |
 |-------|--------|----------|
 | Phase 1: Documentation | **Complete** | ▓▓▓▓▓▓▓▓▓▓ 100% |
-| Phase 2: Database Schema | Not Started | ░░░░░░░░░░ 0% |
-| Phase 3: Core Implementation | Not Started | ░░░░░░░░░░ 0% |
-| Phase 4: Infrastructure | Not Started | ░░░░░░░░░░ 0% |
-| Phase 5: Testing | Not Started | ░░░░░░░░░░ 0% |
-| Phase 6: Documentation | Not Started | ░░░░░░░░░░ 0% |
+| Phase 2: Infrastructure | Not Started | ░░░░░░░░░░ 0% |
+| Phase 3: Database Schema | Not Started | ░░░░░░░░░░ 0% |
+| Phase 4: Core Implementation | Not Started | ░░░░░░░░░░ 0% |
+| Phase 5: Testing & Validation | Not Started | ░░░░░░░░░░ 0% |
+| Phase 6: Documentation & Cleanup | Not Started | ░░░░░░░░░░ 0% |
 
 **Last Updated**: December 28, 2025
