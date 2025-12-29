@@ -1,0 +1,54 @@
+# Mímir V2 - Docker Compose Service Orchestration
+# Port mapping: Host ports prefixed with 3 (35432, 38000) to avoid conflicts
+#
+# V2 Strategy: This runs independently from V1 during development.
+# When V2 is complete, it will replace V1 at the root level.
+
+services:
+  postgres:
+    image: dawsonlp/mimir-postgres:latest
+    ports:
+      - "35432:5432"  # Host:Container - avoid common port conflicts
+    volumes:
+      # PostgreSQL 18+ requires mount at /var/lib/postgresql (not /data subdirectory)
+      # Data will be placed in a version-specific subdirectory automatically
+      - postgres_data:/var/lib/postgresql
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    environment:
+      POSTGRES_DB: mimir
+      POSTGRES_USER: mimir
+      # Password injected from host environment - fails if not set
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mimir -d mimir"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    image: dawsonlp/mimir-api:v2
+    ports:
+      - "38000:8000"  # Host:Container - avoid common port conflicts
+    environment:
+      # Database URL constructed with internal container port (psycopg v3 format)
+      DATABASE_URL: postgresql://mimir:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/mimir
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Embedding configuration
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      DEFAULT_EMBEDDING_MODEL: ${DEFAULT_EMBEDDING_MODEL:-nomic-embed-text}
+      VOYAGEAI_MIMIR_EMBEDDINGS: ${VOYAGEAI_MIMIR_EMBEDDINGS:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

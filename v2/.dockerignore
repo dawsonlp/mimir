@@ -1,0 +1,63 @@
+# Mímir V2 - Docker Ignore
+# Environment files (NEVER include in Docker images)
+.env
+.env.*
+*.env
+**/.env
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.hypothesis/
+
+# Type checking
+.mypy_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Local data
+postgres_data/
+*.log
+*.sqlite
+
+# Build artifacts
+dist/
+build/
+
+# CI/CD
+.github/
+
+# Misc
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp

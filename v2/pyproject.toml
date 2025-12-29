@@ -1,0 +1,85 @@
+[tool.poetry]
+name = "mimir"
+version = "2.0.0"
+description = "Mímir - Durable Memory & Meta-Analysis Storage System"
+authors = ["Development Team"]
+readme = "docs/overview.md"
+packages = [{include = "mimir", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+
+# Core - FastAPI stack
+fastapi = "*"
+uvicorn = {extras = ["standard"], version = "*"}
+pydantic = "*"
+pydantic-settings = "*"
+
+# Database - PostgreSQL with pgvector (NO ORM - raw SQL via psycopg)
+psycopg = {extras = ["binary", "pool"], version = "*"}
+pgvector = "*"
+
+# Logging
+structlog = "*"
+
+# HTTP client for external APIs (embedding providers)
+httpx = "*"
+
+[tool.poetry.group.dev.dependencies]
+# Testing
+pytest = "*"
+pytest-asyncio = "*"
+httpx = "*"
+testcontainers = "*"
+
+# Code quality
+black = "*"
+ruff = "*"
+mypy = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.mypy]
+python_version = "3.13"
+mypy_path = "src"
+# Pragmatic approach - only enable checks that catch real bugs
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+# Keep flexible for dynamic code
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+warn_return_any = false
+
+[tool.ruff]
+src = ["src"]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # line length - handled by formatter
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mimir"]
+
+[tool.black]
+target-version = ["py313"]
+line-length = 88
