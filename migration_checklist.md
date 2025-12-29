@@ -15,18 +15,24 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
 
 ## Phase 1: Documentation
 
-- [x] **Create v2/ directory structure** ✅
-  ```
-  v2/
-  ├── docs/
-  │   ├── architecture.md
-  │   ├── data-model.md
-  │   ├── api-design.md
-  │   └── search-architecture.md
-  ├── src/
-  ├── migrations/
-  └── infrastructure/
-  ```
+- [x] **Create v2/docs/ structure** ✅
+
+- [x] **overview.md** - Project vision ✅
+  - [x] What Mímir is (and is not)
+  - [x] Core goals and value proposition
+  - [x] RAG comparison table
+  - [x] Technology stack
+  - [x] Non-goals and boundaries
+
+- [x] **requirements.md** - V1-V3 roadmap ✅
+  - [x] Version roadmap (Remember → Reflect → Synthesize)
+  - [x] Core capabilities per version
+  - [x] 10 storage system non-goals
+  - [x] What storage may do (allowed capabilities)
+
+- [x] **design-decisions.md** - Architectural decisions ✅
+  - [x] DD-001 through DD-009
+  - [x] DD-009: Unified Artifact Model (V2 key change)
 
 - [x] **architecture.md** - Core principles ✅
   - [x] Unified artifact model (all knowledge = artifacts)
@@ -114,6 +120,8 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
   - [ ] Provenance_events table (append-only audit log)
   - [ ] All provenance enums from start
   - [ ] Indexes for entity lookups and time queries
+- [ ] **schema_migrations table** (created by migrate.py, not a migration file)
+  - [ ] Tracks applied migrations
 - [ ] Create corresponding .down.sql files
 - [ ] Create migrate.py runner (port from V1)
 - [ ] Run migrations and verify schema created
@@ -122,44 +130,46 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
 
 ## Phase 4: Core Implementation
 
+**Legend:** `port` = copy from V1 with minimal changes, `modify` = significant changes needed
+
 - [ ] Create v2/src/mimir/ package structure
-- [ ] **database.py** - Connection pool (port from V1)
-- [ ] **config.py** - Settings (port from V1)
-- [ ] **main.py** - FastAPI application
+- [ ] **database.py** (port) - Connection pool
+- [ ] **config.py** (port) - Settings
+- [ ] **main.py** (modify) - Remove intent/decision router registrations
 
 ### Services
-- [ ] **tenant_service.py** (port from V1)
-- [ ] **artifact_service.py** (consolidated, no intent/decision services)
-- [ ] **relation_service.py** (port from V1)
-- [ ] **span_service.py** (port from V1)
-- [ ] **embedding_service.py** (port from V1)
-- [ ] **search_service.py** (port from V1)
-- [ ] **provenance_service.py** (port from V1)
+- [ ] **tenant_service.py** (port)
+- [ ] **artifact_service.py** (modify) - Extended type enum, absorbs intent/decision patterns
+- [ ] **relation_service.py** (modify) - Simplified entity_type enum
+- [ ] **span_service.py** (port)
+- [ ] **embedding_service.py** (port)
+- [ ] **search_service.py** (modify) - Update entity_type references
+- [ ] **provenance_service.py** (modify) - Update entity_type enum
 
 ### Routers
-- [ ] **tenants.py** (port from V1)
-- [ ] **artifacts.py** (consolidated, handles all artifact types)
-- [ ] **relations.py** (port from V1)
-- [ ] **spans.py** (port from V1)
-- [ ] **embeddings.py** (port from V1)
-- [ ] **search.py** (port from V1)
-- [ ] **provenance.py** (port from V1)
+- [ ] **tenants.py** (port)
+- [ ] **artifacts.py** (modify) - Extended type enum, /types endpoint
+- [ ] **relations.py** (modify) - Simplified entity_type validation
+- [ ] **spans.py** (port)
+- [ ] **embeddings.py** (port)
+- [ ] **search.py** (port)
+- [ ] **provenance.py** (modify) - Update entity_type enum
 
 ### Schemas (Pydantic)
-- [ ] **tenant.py** (port from V1)
-- [ ] **artifact.py** (extended type enum)
-- [ ] **relation.py** (unified entity types)
-- [ ] **span.py** (port from V1)
-- [ ] **embedding.py** (port from V1)
-- [ ] **search.py** (port from V1)
-- [ ] **provenance.py** (port from V1)
+- [ ] **tenant.py** (port)
+- [ ] **artifact.py** (modify) - Extended ArtifactType enum
+- [ ] **relation.py** (modify) - Simplified EntityType enum
+- [ ] **span.py** (port)
+- [ ] **embedding.py** (port)
+- [ ] **search.py** (port)
+- [ ] **provenance.py** (modify) - Update entity_type references
 
-### Embedding Providers
-- [ ] **base.py** (port from V1)
-- [ ] **registry.py** (port from V1)
-- [ ] **voyage.py** (port from V1)
-- [ ] **openai.py** (port from V1)
-- [ ] **ollama.py** (port from V1)
+### Embedding Providers (all port)
+- [ ] **base.py**
+- [ ] **registry.py**
+- [ ] **voyage.py**
+- [ ] **openai.py**
+- [ ] **ollama.py**
 
 ---
 
@@ -195,18 +205,21 @@ Once V2 is validated and working:
 
 ---
 
-## V1 Files to Remove (from V2)
+## V1 Components Not in V2
 
-| V1 File | V2 Status |
-|---------|-----------|
-| `intents.py` (router) | Removed - handled by artifacts |
-| `intent_service.py` | Removed - handled by artifacts |
-| `intent.py` (schema) | Removed - handled by artifacts |
-| `003_create_intents.up.sql` | Removed |
-| `decisions.py` (router) | Removed - handled by artifacts |
-| `decision_service.py` | Removed - handled by artifacts |
-| `decision.py` (schema) | Removed - handled by artifacts |
-| `004_create_decisions.up.sql` | Removed |
+These V1 files will not be recreated in V2 — their functionality is absorbed by the unified artifact model:
+
+| V1 Component | V2 Equivalent |
+|--------------|---------------|
+| `intents.py` (router) | `/artifacts` with `artifact_type=intent` |
+| `intent_service.py` | `artifact_service.py` |
+| `intent.py` (schema) | `artifact.py` with intent type |
+| `003_create_intents.up.sql` | Part of `002_artifacts.up.sql` (artifact_type enum) |
+| `decisions.py` (router) | `/artifacts` with `artifact_type=decision` |
+| `decision_service.py` | `artifact_service.py` |
+| `decision.py` (schema) | `artifact.py` with decision type |
+| `004_create_decisions.up.sql` | Part of `002_artifacts.up.sql` (artifact_type enum) |
+| `intent_groups` table | Replaced by artifacts with relations |
 
 ---
 
@@ -314,6 +327,6 @@ POST /api/v1/relations
 | Phase 3: Database Schema | Not Started | ░░░░░░░░░░ 0% |
 | Phase 4: Core Implementation | Not Started | ░░░░░░░░░░ 0% |
 | Phase 5: Testing & Validation | Not Started | ░░░░░░░░░░ 0% |
-| Phase 6: Documentation & Cleanup | Not Started | ░░░░░░░░░░ 0% |
+| Phase 6: Final Replacement | Not Started | ░░░░░░░░░░ 0% |
 
 **Last Updated**: December 28, 2025
