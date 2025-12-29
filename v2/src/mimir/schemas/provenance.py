@@ -1,4 +1,42 @@
-"""Pydantic schemas for provenance_event table."""
+"""Pydantic schemas for ProvenanceEvent entity - immutable audit trail.
+
+Provenance events record who did what, when, and why. They are append-only
+(never modified or deleted) and enable compliance and debugging.
+
+Actions:
+- create: Entity created
+- update: Entity modified (before/after states captured)
+- delete: Entity removed
+- supersede: Entity replaced by newer version
+- archive: Entity made inactive
+- restore: Entity reactivated
+
+Actor Types:
+- user: Human via UI or direct API call
+- system: Internal process or scheduled task
+- llm: AI/LLM operation (e.g., automated analysis)
+- api_client: External API consumer
+- migration: Data migration script
+
+Key Points:
+- Automatically recorded for CRUD operations
+- Can also record custom business events via API
+- Query by entity (full history) or by actor (all activity)
+
+Usage Examples:
+    # Query history of an artifact
+    GET /provenance/entity/artifact/123
+    
+    # Query all activity by a user
+    GET /provenance/actor/user/john@example.com
+    
+    # Record custom provenance
+    POST /provenance {
+        "entity_type": "artifact", "entity_id": 123, "action": "update",
+        "actor_type": "user", "actor_id": "jane@example.com",
+        "reason": "Fixed typo in title"
+    }
+"""
 
 from datetime import datetime
 from enum import Enum

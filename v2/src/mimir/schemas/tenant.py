@@ -1,4 +1,17 @@
-"""Pydantic schemas for tenant table."""
+"""Pydantic schemas for Tenant entity.
+
+Tenant provides multi-tenancy isolation. Each tenant has completely isolated data.
+All API calls (except tenant CRUD) require X-Tenant-ID header.
+
+Tenant Types:
+- environment: Default type for isolated environments
+- project: For project-specific data isolation
+- experiment: For experimental/temporary data
+
+Usage:
+    POST /tenants {"shortname": "acme", "name": "Acme Corp", "tenant_type": "environment"}
+    All subsequent calls: curl -H "X-Tenant-ID: 1" ...
+"""
 
 from datetime import datetime
 

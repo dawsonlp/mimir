@@ -1,4 +1,41 @@
-"""Pydantic schemas for relation table (V2 unified model)."""
+"""Pydantic schemas for Relation entity - knowledge graph edges.
+
+Relations connect artifacts and artifact versions to form a knowledge graph.
+They enable lineage tracking, evidence linking, and hierarchical organization.
+
+Relation Types (with inverses):
+- references ↔ referenced_by: Citations, links
+- supports ↔ supported_by: Evidence backing claims
+- contradicts (symmetric): Conflicting information
+- derived_from ↔ source_of: Lineage tracking (e.g., decision from conversation)
+- supersedes ↔ superseded_by: Versioning of concepts
+- parent_of ↔ child_of: Hierarchical grouping
+- implements ↔ implemented_by: Requirements to solutions
+- resolves ↔ resolved_by: Questions to answers, intents to decisions
+- related_to (symmetric): General association
+
+Entity Types:
+- artifact: The main knowledge unit
+- artifact_version: Immutable snapshot of an artifact
+
+Usage Examples:
+    # Decision resolves an intent
+    POST /relations {
+        "relation_type": "resolves",
+        "source_entity_type": "artifact", "source_entity_id": 101,
+        "target_entity_type": "artifact", "target_entity_id": 50
+    }
+    
+    # Decision derived from conversation
+    POST /relations {
+        "relation_type": "derived_from",
+        "source_entity_type": "artifact", "source_entity_id": 101,
+        "target_entity_type": "artifact", "target_entity_id": 25
+    }
+    
+    # Query all relations for an artifact
+    GET /relations/artifact/101
+"""
 
 from datetime import datetime
 from enum import Enum

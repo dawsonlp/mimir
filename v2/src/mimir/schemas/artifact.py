@@ -1,4 +1,34 @@
-"""Pydantic schemas for artifact table (V2 unified model)."""
+"""Pydantic schemas for Artifact entity - the universal knowledge unit.
+
+Artifact is the core entity in Mímir V2. ALL knowledge is stored as artifacts
+with type discrimination via artifact_type.
+
+Artifact Type Categories:
+- Content: conversation, document, note (primary source material)
+- Positional: chunk, quote, highlight, annotation (references within content)
+- Derived: intent, decision, analysis, summary, finding, question, answer
+
+Hierarchy:
+- Use parent_artifact_id for tree structures (document → chunks)
+- Positional types use start_offset/end_offset for character positions
+
+Related Entities:
+- ArtifactVersion: Immutable snapshots (created automatically on update)
+- Relation: Connects artifacts (derived_from, supports, resolves)
+- Embedding: Vector representation for semantic search
+
+Usage Examples:
+    # Document
+    POST /artifacts {"artifact_type": "document", "title": "Report", "content": "..."}
+    
+    # Chunk with position
+    POST /artifacts {"artifact_type": "chunk", "parent_artifact_id": 1,
+                     "start_offset": 0, "end_offset": 500, "content": "..."}
+    
+    # Decision
+    POST /artifacts {"artifact_type": "decision", "title": "Use PostgreSQL",
+                     "metadata": {"status": "active", "confidence": 0.95}}
+"""
 
 from datetime import datetime
 

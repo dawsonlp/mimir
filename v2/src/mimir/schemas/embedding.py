@@ -1,4 +1,31 @@
-"""Pydantic schemas for embedding table."""
+"""Pydantic schemas for Embedding entity - vector representations for semantic search.
+
+Embeddings enable "find similar" queries by storing vector representations
+of artifact content. Uses HNSW index for fast approximate nearest neighbor.
+
+Supported Models:
+- OpenAI: text-embedding-3-small (1536d), text-embedding-3-large (3072d)
+- Ollama: nomic-embed-text (768d), mxbai-embed-large (1024d)
+
+Chunking:
+- For long documents, create multiple embeddings with chunk_index
+- chunk_start/chunk_end track character positions within source
+
+Key Points:
+- One embedding per (entity, model, chunk_index) combination
+- Embeddings are invisible to semantic search without explicit creation
+- HNSW index limited to 2000 dimensions
+
+Usage Examples:
+    # Generate embedding for an artifact
+    POST /embeddings/generate {"entity_type": "artifact", "entity_id": 123}
+    
+    # Find similar artifacts
+    POST /embeddings/similar {"text": "database architecture", "limit": 10}
+    
+    # Semantic search
+    POST /search/semantic {"query": "PostgreSQL optimization", "model": "text-embedding-3-small"}
+"""
 
 from datetime import datetime
 
