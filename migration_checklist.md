@@ -210,19 +210,22 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
 
 Once V2 is validated and working:
 
-- [ ] Delete all V1 source files (`src/mimir/`, `migrations/`, etc.)
-- [ ] Move `v2/src/` to `src/`
-- [ ] Move `v2/migrations/` to `migrations/`
-- [ ] Move `v2/infrastructure/` to `infrastructure/`
-- [ ] Update root `pyproject.toml` (or move v2 version)
-- [ ] Update root `docker-compose.yaml` (or move v2 version)
-- [ ] Update root `README.md` for V2
-- [ ] Move `v2/docs/` content to root docs
-- [ ] Delete empty `v2/` directory
-- [ ] Run full test suite to verify
-- [ ] Final commit and push
+- [x] Delete all V1 source files (`src/mimir/`, `migrations/`, etc.) ✅
+- [x] Move `v2/src/` to `src/` ✅
+- [x] Move `v2/migrations/` to `migrations/` ✅
+- [x] Move `v2/infrastructure/` to `infrastructure/` ✅
+- [x] Update root `pyproject.toml` (or move v2 version) ✅
+- [x] Update root `docker-compose.yaml` (or move v2 version) ✅
+- [x] Update root `README.md` for V2 ✅
+- [x] Move `v2/docs/` content to root docs ✅
+- [x] Delete empty `v2/` directory ✅
+- [ ] Run full test suite to verify (Phase 5 - tests not yet written)
+- [x] Final commit and push ✅
 
 **End State:** Single project with V2 implementation at root level. No `v2/` directory.
+
+**Completed:** December 28, 2025
+**Commit:** d6a8a65 - refactor: migrate V2 unified artifact model to root
 
 ---
 
@@ -370,7 +373,7 @@ POST /api/v1/relations
 | Phase 3: Database Schema | **Complete** | ▓▓▓▓▓▓▓▓▓▓ 100% |
 | Phase 4: Core Implementation | **Complete** | ▓▓▓▓▓▓▓▓▓▓ 100% |
 | Phase 5: Testing & Validation | Not Started | ░░░░░░░░░░ 0% |
-| Phase 6: Final Replacement | Not Started | ░░░░░░░░░░ 0% |
+| Phase 6: Final Replacement | **Complete** | ▓▓▓▓▓▓▓▓▓▓ 100% |
 
 **Last Updated**: December 28, 2025
 
