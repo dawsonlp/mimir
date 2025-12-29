@@ -77,15 +77,15 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
 
 ## Phase 2: Infrastructure
 
-- [ ] **pyproject.toml** (port from V1)
-- [ ] **docker-compose.yaml** (port from V1, update paths to v2/)
-- [ ] **docker-compose.override.yaml** (port from V1)
-- [ ] **infrastructure/docker/api/Dockerfile** (port from V1)
-- [ ] **infrastructure/docker/postgres/Dockerfile** (port from V1)
-- [ ] **init-scripts/01-create-extensions.sql** (port from V1)
-- [ ] **.env.example** (port from V1)
-- [ ] **.gitignore** and **.dockerignore** (port from V1)
-- [ ] Test Docker Compose starts successfully
+- [x] **pyproject.toml** (port from V1) ✅
+- [x] **docker-compose.yaml** (port from V1, update paths to v2/) ✅
+- [x] **docker-compose.override.yaml** (port from V1) ✅
+- [x] **infrastructure/docker/api/Dockerfile** (port from V1) ✅
+- [x] **infrastructure/docker/postgres/Dockerfile** (port from V1) ✅
+- [x] **init-scripts/01-create-extensions.sql** (port from V1) ✅
+- [x] **.env.example** (port from V1) ✅
+- [x] **.gitignore** and **.dockerignore** (port from V1) ✅
+- [x] Test Docker Compose starts successfully ✅
 
 ---
 
@@ -323,7 +323,7 @@ POST /api/v1/relations
 | Phase | Status | Progress |
 |-------|--------|----------|
 | Phase 1: Documentation | **Complete** | ▓▓▓▓▓▓▓▓▓▓ 100% |
-| Phase 2: Infrastructure | Not Started | ░░░░░░░░░░ 0% |
+| Phase 2: Infrastructure | **Complete** | ▓▓▓▓▓▓▓▓▓▓ 100% |
 | Phase 3: Database Schema | Not Started | ░░░░░░░░░░ 0% |
 | Phase 4: Core Implementation | Not Started | ░░░░░░░░░░ 0% |
 | Phase 5: Testing & Validation | Not Started | ░░░░░░░░░░ 0% |
