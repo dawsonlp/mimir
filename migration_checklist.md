@@ -85,13 +85,35 @@ V2 consolidates all knowledge types into the Artifact abstraction, using Relatio
 
 ## Phase 3: Database Schema
 
+**Note:** V2 migrations are a clean, rationalized design from scratch — not V1's incremental changes. V1 had 10 migrations reflecting development history; V2 consolidates to 6 logical units.
+
 - [ ] Create v2/migrations/ structure
-- [ ] **001_create_tenants.up.sql** (port from V1)
-- [ ] **002_create_artifacts.up.sql** (extended type enum)
-- [ ] **003_create_relations.up.sql** (unified entity types)
-- [ ] **004_create_spans.up.sql** (port from V1)
-- [ ] **005_create_embeddings.up.sql** (port from V1)
-- [ ] **006_create_provenance.up.sql** (port from V1)
+- [ ] **001_schema_and_tenants.up.sql**
+  - [ ] Create `mimirdata` schema
+  - [ ] Create all enums (artifact_type, entity_type, relation_type, span_type, etc.)
+  - [ ] Create tenants table with all columns from start
+- [ ] **002_artifacts.up.sql**
+  - [ ] Artifacts table with extended type enum (includes intent, decision, analysis, etc.)
+  - [ ] Artifact_versions table
+  - [ ] Full-text search columns (search_vector) from start
+  - [ ] source, source_system, external_id columns from start
+  - [ ] GIN indexes for FTS
+- [ ] **003_relations.up.sql**
+  - [ ] Relations table with unified entity_type enum (artifact, artifact_version, span only)
+  - [ ] All relation_type values from start
+  - [ ] Indexes for bidirectional queries
+- [ ] **004_spans.up.sql**
+  - [ ] Spans table with all span_type values
+  - [ ] Indexes
+- [ ] **005_embeddings.up.sql**
+  - [ ] Embeddings table with vector(3072) for max dimensions
+  - [ ] Model column as TEXT (not enum) for flexibility
+  - [ ] HNSW index for approximate nearest neighbor
+  - [ ] Chunk metadata columns
+- [ ] **006_provenance.up.sql**
+  - [ ] Provenance_events table (append-only audit log)
+  - [ ] All provenance enums from start
+  - [ ] Indexes for entity lookups and time queries
 - [ ] Create corresponding .down.sql files
 - [ ] Create migrate.py runner (port from V1)
 - [ ] Run migrations and verify schema created
