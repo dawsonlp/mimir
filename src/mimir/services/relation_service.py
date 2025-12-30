@@ -21,19 +21,19 @@ async def create_relation(tenant_id: int, data: RelationCreate) -> RelationRespo
         result = await conn.execute(
             f"""
             INSERT INTO {SCHEMA_NAME}.relation
-                (tenant_id, relation_type, source_entity_type, source_entity_id,
-                 target_entity_type, target_entity_id, metadata)
+                (tenant_id, relation_type, source_type, source_id,
+                 target_type, target_id, metadata)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, tenant_id, relation_type, source_entity_type, source_entity_id,
-                      target_entity_type, target_entity_id, metadata, created_at
+            RETURNING id, tenant_id, relation_type, source_type, source_id,
+                      target_type, target_id, metadata, created_at
             """,
             (
                 tenant_id,
                 data.relation_type,
-                data.source_entity_type.value,
-                data.source_entity_id,
-                data.target_entity_type.value,
-                data.target_entity_id,
+                data.source_type.value,
+                data.source_id,
+                data.target_type.value,
+                data.target_id,
                 Json(data.metadata) if data.metadata else None,
             ),
         )
@@ -48,8 +48,8 @@ async def get_relation(relation_id: int, tenant_id: int) -> RelationResponse | N
     async with get_connection() as conn:
         result = await conn.execute(
             f"""
-            SELECT id, tenant_id, relation_type, source_entity_type, source_entity_id,
-                   target_entity_type, target_entity_id, metadata, created_at
+            SELECT id, tenant_id, relation_type, source_type, source_id,
+                   target_type, target_id, metadata, created_at
             FROM {SCHEMA_NAME}.relation
             WHERE id = %s AND tenant_id = %s
             """,
@@ -73,18 +73,18 @@ async def list_relations(
         query_params: list = [tenant_id]
 
         if params:
-            if params.source_entity_type:
-                where_clause += " AND source_entity_type = %s"
-                query_params.append(params.source_entity_type.value)
-            if params.source_entity_id is not None:
-                where_clause += " AND source_entity_id = %s"
-                query_params.append(params.source_entity_id)
-            if params.target_entity_type:
-                where_clause += " AND target_entity_type = %s"
-                query_params.append(params.target_entity_type.value)
-            if params.target_entity_id is not None:
-                where_clause += " AND target_entity_id = %s"
-                query_params.append(params.target_entity_id)
+            if params.source_type:
+                where_clause += " AND source_type = %s"
+                query_params.append(params.source_type.value)
+            if params.source_id is not None:
+                where_clause += " AND source_id = %s"
+                query_params.append(params.source_id)
+            if params.target_type:
+                where_clause += " AND target_type = %s"
+                query_params.append(params.target_type.value)
+            if params.target_id is not None:
+                where_clause += " AND target_id = %s"
+                query_params.append(params.target_id)
             if params.relation_type:
                 where_clause += " AND relation_type = %s"
                 query_params.append(params.relation_type)
@@ -99,8 +99,8 @@ async def list_relations(
         # Get relations
         result = await conn.execute(
             f"""
-            SELECT id, tenant_id, relation_type, source_entity_type, source_entity_id,
-                   target_entity_type, target_entity_id, metadata, created_at
+            SELECT id, tenant_id, relation_type, source_type, source_id,
+                   target_type, target_id, metadata, created_at
             FROM {SCHEMA_NAME}.relation
             {where_clause}
             ORDER BY created_at DESC
@@ -139,8 +139,8 @@ async def update_relation(
             UPDATE {SCHEMA_NAME}.relation
             SET {", ".join(updates)}
             WHERE id = %s AND tenant_id = %s
-            RETURNING id, tenant_id, relation_type, source_entity_type, source_entity_id,
-                      target_entity_type, target_entity_id, metadata, created_at
+            RETURNING id, tenant_id, relation_type, source_type, source_id,
+                      target_type, target_id, metadata, created_at
             """,
             params,
         )
@@ -185,14 +185,10 @@ async def get_entity_relations(
 
         entity_conditions = []
         if as_source:
-            entity_conditions.append(
-                "(source_entity_type = %s AND source_entity_id = %s)"
-            )
+            entity_conditions.append("(source_type = %s AND source_id = %s)")
             params.extend([entity_type.value, entity_id])
         if as_target:
-            entity_conditions.append(
-                "(target_entity_type = %s AND target_entity_id = %s)"
-            )
+            entity_conditions.append("(target_type = %s AND target_id = %s)")
             params.extend([entity_type.value, entity_id])
 
         if entity_conditions:
@@ -206,8 +202,8 @@ async def get_entity_relations(
 
         result = await conn.execute(
             f"""
-            SELECT id, tenant_id, relation_type, source_entity_type, source_entity_id,
-                   target_entity_type, target_entity_id, metadata, created_at
+            SELECT id, tenant_id, relation_type, source_type, source_id,
+                   target_type, target_id, metadata, created_at
             FROM {SCHEMA_NAME}.relation
             WHERE {where_clause}
             ORDER BY created_at DESC
@@ -222,10 +218,10 @@ async def get_entity_relations(
 async def check_relation_exists(
     tenant_id: int,
     relation_type: str,
-    source_entity_type: EntityType,
-    source_entity_id: int,
-    target_entity_type: EntityType,
-    target_entity_id: int,
+    source_type: EntityType,
+    source_id: int,
+    target_type: EntityType,
+    target_id: int,
 ) -> bool:
     """Check if a specific relation already exists."""
     async with get_connection() as conn:
@@ -234,18 +230,18 @@ async def check_relation_exists(
             SELECT 1 FROM {SCHEMA_NAME}.relation
             WHERE tenant_id = %s
               AND relation_type = %s
-              AND source_entity_type = %s
-              AND source_entity_id = %s
-              AND target_entity_type = %s
-              AND target_entity_id = %s
+              AND source_type = %s
+              AND source_id = %s
+              AND target_type = %s
+              AND target_id = %s
             """,
             (
                 tenant_id,
                 relation_type,
-                source_entity_type.value,
-                source_entity_id,
-                target_entity_type.value,
-                target_entity_id,
+                source_type.value,
+                source_id,
+                target_type.value,
+                target_id,
             ),
         )
         row = await result.fetchone()
@@ -259,10 +255,10 @@ def _row_to_relation_response(row: tuple) -> RelationResponse:
         id=row[0],
         tenant_id=row[1],
         relation_type=row[2],
-        source_entity_type=EntityType(row[3]),
-        source_entity_id=row[4],
-        target_entity_type=EntityType(row[5]),
-        target_entity_id=row[6],
+        source_type=EntityType(row[3]),
+        source_id=row[4],
+        target_type=EntityType(row[5]),
+        target_id=row[6],
         metadata=row[7],
         created_at=row[8],
     )

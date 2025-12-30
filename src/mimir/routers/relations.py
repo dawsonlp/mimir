@@ -27,18 +27,18 @@ async def create_relation(
 @router.get("", response_model=RelationListResponse)
 async def list_relations(
     x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
-    source_entity_type: EntityType | None = Query(None),
-    source_entity_id: int | None = Query(None),
-    target_entity_type: EntityType | None = Query(None),
-    target_entity_id: int | None = Query(None),
+    source_type: EntityType | None = Query(None),
+    source_id: int | None = Query(None),
+    target_type: EntityType | None = Query(None),
+    target_id: int | None = Query(None),
     relation_type: str | None = Query(None),
 ) -> RelationListResponse:
     """List relations with optional filtering."""
     params = RelationQueryParams(
-        source_entity_type=source_entity_type,
-        source_entity_id=source_entity_id,
-        target_entity_type=target_entity_type,
-        target_entity_id=target_entity_id,
+        source_type=source_type,
+        source_id=source_id,
+        target_type=target_type,
+        target_id=target_id,
         relation_type=relation_type,
     )
     return await relation_service.list_relations(x_tenant_id, params)

@@ -22,17 +22,17 @@ Usage Examples:
     # Decision resolves an intent
     POST /relations {
         "relation_type": "resolves",
-        "source_entity_type": "artifact", "source_entity_id": 101,
-        "target_entity_type": "artifact", "target_entity_id": 50
+        "source_type": "artifact", "source_id": 101,
+        "target_type": "artifact", "target_id": 50
     }
-    
+
     # Decision derived from conversation
     POST /relations {
         "relation_type": "derived_from",
-        "source_entity_type": "artifact", "source_entity_id": 101,
-        "target_entity_type": "artifact", "target_entity_id": 25
+        "source_type": "artifact", "source_id": 101,
+        "target_type": "artifact", "target_id": 25
     }
-    
+
     # Query all relations for an artifact
     GET /relations/artifact/101
 """
@@ -54,10 +54,10 @@ class RelationBase(BaseModel):
     """Base schema for relation."""
 
     relation_type: str = Field(..., description="Type from relation_type vocabulary")
-    source_entity_type: EntityType = Field(..., description="Source entity type")
-    source_entity_id: int = Field(..., description="Source entity ID")
-    target_entity_type: EntityType = Field(..., description="Target entity type")
-    target_entity_id: int = Field(..., description="Target entity ID")
+    source_type: EntityType = Field(..., description="Source entity type")
+    source_id: int = Field(..., description="Source entity ID")
+    target_type: EntityType = Field(..., description="Target entity type")
+    target_id: int = Field(..., description="Target entity ID")
     metadata: dict | None = Field(default_factory=dict, description="Additional metadata")
 
 
@@ -65,10 +65,10 @@ class RelationCreate(BaseModel):
     """Schema for creating a new relation."""
 
     relation_type: str = Field(..., min_length=1, max_length=50)
-    source_entity_type: EntityType
-    source_entity_id: int
-    target_entity_type: EntityType
-    target_entity_id: int
+    source_type: EntityType
+    source_id: int
+    target_type: EntityType
+    target_id: int
     metadata: dict | None = None
 
 
@@ -99,8 +99,8 @@ class RelationListResponse(BaseModel):
 class RelationQueryParams(BaseModel):
     """Query parameters for filtering relations."""
 
-    source_entity_type: EntityType | None = None
-    source_entity_id: int | None = None
-    target_entity_type: EntityType | None = None
-    target_entity_id: int | None = None
+    source_type: EntityType | None = None
+    source_id: int | None = None
+    target_type: EntityType | None = None
+    target_id: int | None = None
     relation_type: str | None = None
