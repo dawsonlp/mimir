@@ -292,14 +292,14 @@ class TestSearchAPI:
             },
         )
 
-        # Search for that unique word
-        search_resp = await async_client.post(
+        # Search for that unique word (GET with query params)
+        search_resp = await async_client.get(
             "/search/fulltext",
             headers=headers,
-            json={"query": unique_word, "limit": 10},
+            params={"query": unique_word, "limit": 10},
         )
         assert search_resp.status_code == 200
         results = search_resp.json()
 
-        # Should find our document
-        assert len(results) > 0, f"Expected to find document with '{unique_word}'"
+        # Should find our document - results has 'items' list
+        assert results.get("total", 0) > 0 or len(results.get("items", [])) > 0, f"Expected to find document with '{unique_word}', got: {results}"

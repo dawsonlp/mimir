@@ -32,6 +32,7 @@ async def fulltext_search(
         total = (await count_result.fetchone())[0]
 
         # Get results with ranking
+        # Note: params for SELECT clause come before WHERE clause params
         result = await conn.execute(
             f"""
             SELECT id, tenant_id, artifact_type, parent_artifact_id,
@@ -45,7 +46,7 @@ async def fulltext_search(
             ORDER BY rank DESC
             LIMIT %s OFFSET %s
             """,
-            params + [query, limit, offset],
+            [query] + params + [limit, offset],
         )
         rows = await result.fetchall()
 

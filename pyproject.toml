@@ -25,6 +25,10 @@ structlog = "*"
 # HTTP client for external APIs (embedding providers)
 httpx = "*"
 
+# CLI tools
+typer = "*"
+rich = "*"
+
 [tool.poetry.group.dev.dependencies]
 # Testing
 pytest = "*"
@@ -46,6 +50,9 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: tests that require a running database/API"
+]
 
 [tool.mypy]
 python_version = "3.13"

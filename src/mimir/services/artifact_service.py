@@ -12,6 +12,9 @@ from mimir.schemas.artifact import (
     ArtifactUpdate,
     ArtifactVersionResponse,
 )
+from mimir.schemas.provenance import ProvenanceAction, ProvenanceActorType
+from mimir.schemas.relation import EntityType
+from mimir.services import provenance_service
 
 SCHEMA_NAME = "mimirdata"
 
@@ -61,7 +64,19 @@ async def create_artifact(tenant_id: int, data: ArtifactCreate) -> ArtifactRespo
         row = await result.fetchone()
         await conn.commit()
 
-    return _row_to_artifact_response(row)
+    artifact = _row_to_artifact_response(row)
+
+    # Log provenance event
+    await provenance_service.log_action(
+        tenant_id=tenant_id,
+        entity_type=EntityType.ARTIFACT,
+        entity_id=artifact.id,
+        action=ProvenanceAction.CREATE,
+        actor_type=ProvenanceActorType.API_CLIENT,
+        after_state={"title": artifact.title, "artifact_type": artifact.artifact_type},
+    )
+
+    return artifact
 
 
 async def get_artifact(artifact_id: int, tenant_id: int) -> ArtifactResponse | None:
@@ -143,6 +158,9 @@ async def update_artifact(
     artifact_id: int, tenant_id: int, data: ArtifactUpdate
 ) -> ArtifactResponse | None:
     """Update artifact."""
+    # Get before state for provenance
+    before = await get_artifact(artifact_id, tenant_id)
+
     updates = []
     params = []
 
@@ -207,11 +225,27 @@ async def update_artifact(
     if not row:
         return None
 
-    return _row_to_artifact_response(row)
+    artifact = _row_to_artifact_response(row)
+
+    # Log provenance event
+    await provenance_service.log_action(
+        tenant_id=tenant_id,
+        entity_type=EntityType.ARTIFACT,
+        entity_id=artifact.id,
+        action=ProvenanceAction.UPDATE,
+        actor_type=ProvenanceActorType.API_CLIENT,
+        before_state={"title": before.title, "artifact_type": before.artifact_type} if before else None,
+        after_state={"title": artifact.title, "artifact_type": artifact.artifact_type},
+    )
+
+    return artifact
 
 
 async def delete_artifact(artifact_id: int, tenant_id: int) -> bool:
     """Delete an artifact."""
+    # Get before state for provenance
+    before = await get_artifact(artifact_id, tenant_id)
+
     async with get_connection() as conn:
         result = await conn.execute(
             f"""
@@ -223,6 +257,17 @@ async def delete_artifact(artifact_id: int, tenant_id: int) -> bool:
         )
         row = await result.fetchone()
         await conn.commit()
+
+    if row:
+        # Log provenance event
+        await provenance_service.log_action(
+            tenant_id=tenant_id,
+            entity_type=EntityType.ARTIFACT,
+            entity_id=artifact_id,
+            action=ProvenanceAction.DELETE,
+            actor_type=ProvenanceActorType.API_CLIENT,
+            before_state={"title": before.title, "artifact_type": before.artifact_type} if before else None,
+        )
 
     return row is not None
 
