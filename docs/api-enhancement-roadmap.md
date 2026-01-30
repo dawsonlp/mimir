@@ -321,10 +321,29 @@ Current search endpoints find artifacts by content similarity but cannot filter 
 Complex queries like "what documents support decisions that resolve intents created this week" require multi-hop graph traversal with filtering.
 
 ### Deferred
+> **Status**: Deferred (2026-01-29)  
+> **Review Date**: Revisit after P1 production usage validates graph traversal patterns
+
 This enhancement is deferred pending:
-1. Validation of P1 context retrieval
-2. Clear use cases from production usage
-3. Evaluation of dedicated graph query language vs. REST API
+1. **Validation of P1 context retrieval** - P1 provides BFS graph traversal with policy-based filtering. Monitor production usage to identify queries P1 cannot satisfy.
+2. **Clear use cases from production usage** - No concrete requirements beyond "find path from A to B with constraints." Wait for real user requests.
+3. **Evaluation of dedicated graph query language vs. REST API** - Options include:
+   - Simple REST endpoint (`POST /graph/paths`)
+   - Cypher-like DSL
+   - GraphQL with `@connection` directives
+   - Exposing recursive CTEs directly
+
+**Why defer (YAGNI justification):**
+- P1 already implements BFS traversal with depth control and cycle detection
+- Building a general-purpose graph query language without concrete requirements risks overengineering
+- Roadmap assessment: High complexity, Low impact
+- Infrastructure from P1 (traversal, relation lookups) can be reused when requirements emerge
+
+**Triggers to revisit:**
+- User requests for "find all paths between X and Y"
+- Need for graph pattern matching (e.g., "A -[derived_from]-> B -[supports]-> C")
+- P1's context retrieval proves insufficient for RAG workflows
+- LLM agent tooling needs explicit path queries
 
 ### Preliminary Concepts
 - Path-based query syntax
