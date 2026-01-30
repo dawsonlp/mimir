@@ -1,18 +1,24 @@
 # Mímir V2 API - Multi-stage build
 # SECURITY: No secrets in image - all credentials provided at runtime
 
-# Build stage - export dependencies
+# Build stage - install dependencies
 FROM python:3.13-slim AS builder
 WORKDIR /app
 
-# Install Poetry with export plugin for dependency export
-RUN pip install --no-cache-dir poetry poetry-plugin-export
+# Install Poetry for dependency resolution
+RUN pip install --no-cache-dir poetry
 
 # Copy only dependency files first (better layer caching)
-COPY pyproject.toml poetry.lock* ./
+COPY pyproject.toml ./
 
-# Export dependencies to requirements.txt (without dev dependencies)
-RUN poetry export -f requirements.txt -o requirements.txt --without-hashes
+# Configure poetry to install deps globally (no virtualenv in container)
+RUN poetry config virtualenvs.create false
+
+# Install dependencies without dev packages (--no-root skips project package)
+RUN poetry install --only main --no-interaction --no-root
+
+# Set Python path for src layout (needed when builder stage used directly in dev)
+ENV PYTHONPATH=/app/src
 
 # Runtime stage - lean production image
 FROM python:3.13-slim AS runtime
@@ -22,9 +28,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Install dependencies from builder stage
-COPY --from=builder /app/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy installed packages from builder stage
+COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code only (no config files with secrets)
 COPY src/ ./src/
@@ -42,4 +48,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["python", "-m", "uvicorn", "mimir.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "mimir.main:app", "--host", "0.0.0.0", "--port", "8000"]
