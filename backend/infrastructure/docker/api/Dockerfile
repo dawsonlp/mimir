@@ -32,12 +32,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && \
 COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code only (no config files with secrets)
-COPY src/ ./src/
+# Copy application code - src contents become the deployed package structure
+# (src/ is the sources root, not a package - only its contents are deployed)
+COPY src/mimir/ ./mimir/
 COPY migrations/ ./migrations/
 
-# Set Python path for src layout
-ENV PYTHONPATH=/app/src
+# PYTHONPATH points to workdir where mimir/ package now lives
+ENV PYTHONPATH=/app
 
 # No default environment variables with secrets
 # All credentials provided at runtime via docker-compose or orchestrator
