@@ -11,6 +11,7 @@ from mimir.database import close_pool, init_pool
 from mimir.routers import (
     artifact_types,
     artifacts,
+    context,
     embeddings,
     provenance,
     relation_types,
@@ -95,6 +96,10 @@ TAGS_METADATA = [
         "description": "**Universal knowledge units.** All knowledge is stored as artifacts with type discrimination. Supports hierarchy via `parent_artifact_id` and positional data via `start_offset`/`end_offset`.",
     },
     {
+        "name": "context",
+        "description": "**RAG context retrieval.** Policy-driven context assembly for RAG applications. Single request retrieves artifact with all contextually relevant artifacts. Policies: direct_relations, derived_lineage, evidence_chain, full_graph.",
+    },
+    {
         "name": "relation-types",
         "description": "**Vocabulary management** for relation types. Each relation has an inverse (e.g., `parent_of` ↔ `child_of`). Some are symmetric (`contradicts`, `related_to`).",
     },
@@ -148,6 +153,7 @@ app.add_middleware(
 app.include_router(tenants.router)
 app.include_router(artifact_types.router)
 app.include_router(artifacts.router)
+app.include_router(context.router)
 app.include_router(relation_types.router)
 app.include_router(relations.router)
 app.include_router(embeddings.router)

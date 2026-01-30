@@ -55,7 +55,14 @@ Currently, retrieving N artifacts requires N separate API calls. This creates un
 
 ---
 
-## P1: Context Retrieval Service
+## P1: Context Retrieval Service ✅ COMPLETE
+
+> **Implemented**: 2026-01-29  
+> **Files Created**: 
+> - `backend/src/mimir/schemas/context.py` - Pydantic schemas for context retrieval
+> - `backend/src/mimir/services/context_service.py` - Policy-driven graph traversal service
+> - `backend/src/mimir/routers/context.py` - POST /context/{artifact_id} endpoint
+> - `scripts/test_context.sh` - Integration test script
 
 ### Problem Statement
 RAG applications need to retrieve an artifact along with all contextually relevant artifacts in a single operation. This is not simply "artifact + relations"—it requires **policy-driven decisions** about what constitutes relevant context.
