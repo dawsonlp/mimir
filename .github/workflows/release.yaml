@@ -13,6 +13,9 @@ env:
   API_IMAGE: dawsonlp/mimir-api
   POSTGRES_IMAGE: dawsonlp/mimir-postgres
 
+permissions:
+  contents: write
+
 jobs:
   release:
     name: Build and Push
