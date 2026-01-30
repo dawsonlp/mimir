@@ -360,24 +360,28 @@ Phase 3: Search Enhancement (Week 4)
 
 ## Testing Requirements
 
+> **Testing Philosophy**: Tests should provide value proportional to their maintenance cost.
+> We focus on:
+> - Pure function edge cases (hashing, filtering, date logic)
+> - Business rules that affect data quality
+> - Integration tests for end-to-end behavior
+> 
+> We explicitly avoid tests that:
+> - Test framework behavior (e.g., "Pydantic validates required fields")
+> - Test implementation details (e.g., tuple-to-object mapping)
+> - Would break on valid refactoring
+
 ### P0: Batch Retrieval
-- Unit tests: ID parsing, ordering, deduplication
-- Integration tests: Multi-tenant isolation, missing IDs handling
-- Performance tests: 100-artifact batch under load
+- Unit tests: Content hashing edge cases (whitespace, unicode, empty)
+- Integration tests: Multi-tenant isolation, missing IDs handling, ordering
 
 ### P1: Context Retrieval
-- Unit tests: Each policy's traversal logic independently
-- Integration tests: 
-  - Cycle detection
-  - Depth limiting
-  - Multi-tenant isolation in traversal
-  - Large context handling (50+ artifacts)
-- Property-based tests: Policy composition produces valid subgraphs
+- Unit tests: Temporal filtering (date boundaries), hints pipeline (token budget, filters)
+- Integration tests: Cycle detection, depth limiting, multi-tenant isolation
 
 ### P2: Search Filters
-- Unit tests: Filter query construction
+- Unit tests: Result filtering (ordering, scoring preservation, re-ranking)
 - Integration tests: Combined filters with search scoring
-- Performance tests: Filter overhead measurement
 
 ---
 
