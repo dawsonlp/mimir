@@ -17,16 +17,12 @@ RUN poetry config virtualenvs.create false
 # Install dependencies without dev packages (--no-root skips project package)
 RUN poetry install --only main --no-interaction --no-root
 
-# Set Python path for src layout (needed when builder stage used directly in dev)
-ENV PYTHONPATH=/app/src
+# PYTHONPATH=/app matches runtime - dev volume mount puts mimir/ directly at /app/mimir/
+ENV PYTHONPATH=/app
 
 # Runtime stage - lean production image
 FROM python:3.13-slim AS runtime
 WORKDIR /app
-
-# Install curl for health checks
-RUN apt-get update && apt-get install -y --no-install-recommends curl && \
-    rm -rf /var/lib/apt/lists/*
 
 # Copy installed packages from builder stage
 COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
@@ -45,8 +41,8 @@ ENV PYTHONPATH=/app
 
 EXPOSE 8000
 
-# Health check for container orchestration
+# Health check for container orchestration (uses Python stdlib - no curl needed)
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD ["python", "-m", "mimir.healthcheck"]
 
 CMD ["uvicorn", "mimir.main:app", "--host", "0.0.0.0", "--port", "8000"]
