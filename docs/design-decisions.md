@@ -1,179 +1,298 @@
 # Mímir V2 Design Decisions
 
-This document records architectural decisions. Design decisions are numbered sequentially.
+## Overview
+
+This document captures the key architectural decisions made in Mímir V2, focusing on the transition to UUIDs and append-only data patterns.
 
 ---
 
-## DD-001: Dedicated PostgreSQL Schema
+## Decision 1: UUIDv7 for Primary Keys
 
-Use a dedicated PostgreSQL schema named `mimirdata` for all Mímir tables.
+### Context
+The original design used auto-incrementing integers for primary keys. This created dependencies between clients and the database—clients couldn't know IDs until after INSERT.
 
-**Rationale:**
-- Keeps Mímir data isolated from other applications
-- Clean separation from `public` schema (allows coexistence with LangGraph, etc.)
-- Supports future schema versioning
+### Decision
+Switch all content tables to UUID primary keys with UUIDv7 preferred:
 
----
+- **Artifact**: UUID primary key (client-generated UUIDv7 preferred)
+- **Relation**: UUID primary key, UUID references to artifacts
+- **Embedding**: UUID primary key, UUID reference to artifact
+- **Provenance Event**: UUID primary key, UUID entity reference
 
-## DD-002: Multi-Tenant Architecture
+### Rationale
 
-All entity tables reference `tenant_id` for logical data partitioning.
+| Factor | Impact |
+|--------|--------|
+| **Distributed Creation** | Clients can generate IDs before calling API |
+| **Pre-linked Graphs** | Dragonfly can build full object graphs with relationships before any persistence |
+| **Idempotency** | Same UUID twice = client error (409 Conflict), not silent update |
+| **No Database Dependency** | Clients don't need DB round-trip to get ID |
+| **UUIDv7 Ordering** | Timestamp prefix gives creation ordering + better B-tree performance |
 
-**Tenant Model:**
-| Column | Purpose |
-|--------|---------|
-| id | Primary key |
-| shortname | Unique identifier (e.g., "production", "research") |
-| tenant_type | environment, project, experiment |
-| is_active | Soft delete flag |
+### Implementation Details
 
-**API:** Tenant specified via `X-Tenant-ID` header. All queries automatically filtered.
+```sql
+-- Database uses UUID primary keys with default gen_random_uuid()
+-- Client can provide UUIDv7 for better ordering
+CREATE TABLE mimirdata.artifact (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ...
+);
+```
 
-**Rationale:**
-- Complete data isolation without separate databases
-- Easy to query/export by project context
-- Supports multiple concurrent experiments
+```python
+# API accepts optional client ID
+class ArtifactCreate(BaseModel):
+    id: UUID | None = None  # Client-generated UUIDv7 preferred
+    artifact_type: str
+    ...
+```
 
----
-
-## DD-003: Raw SQL (No ORM, No Alembic)
-
-Use raw SQL via psycopg v3 for all data access AND schema definitions.
-
-**Migration Format:** Plain SQL files with a simple Python runner
-- `001_create_tenants.up.sql` / `.down.sql`
-- Commands: `migrate up`, `migrate down`, `migrate status`
-
-**Rationale:**
-- PostgreSQL features (pgvector, FTS, recursive CTEs, JSONB) require raw SQL
-- Schema is stable, not rapidly evolving
-- SQL is transparent about database operations
-- Rollback support via `.down.sql` files
-
----
-
-## DD-004: Flexible Dependency Versions During Development
-
-Do NOT lock specific versions during active development.
-
-**Rationale:**
-- Receive fixes, security patches, and advances
-- Rapidly-evolving libraries (FastAPI, Pydantic, psycopg) improve frequently
-- Lock versions only when moving to QA/Production
+### Duplicate Handling
+- **Duplicate UUID**: 409 Conflict (client error, not create-if-not-exists)
+- **Duplicate relation (source, target, type)**: 409 Conflict
 
 ---
 
-## DD-005: SERIAL Primary Keys (Not UUID)
+## Decision 2: Append-Only Data Model
 
-Use PostgreSQL SERIAL (auto-increment integers) for all primary keys.
+### Context
+Traditional CRUD systems allow updates and deletes. This complicates audit trails, makes debugging harder, and creates data consistency issues in distributed systems.
 
-**Rationale:**
-| Factor | SERIAL | UUID |
-|--------|--------|------|
-| Storage | 4 bytes | 16 bytes |
-| Index performance | Faster B-tree | Slower |
-| Simplicity | Server-generated | Complexity |
+### Decision
+Content tables (artifact, relation, embedding) are **append-only**:
+- No UPDATE operations
+- No DELETE operations
+- All mutations create new records
 
-**External References:** Use `external_id` column to store original source IDs (ChatGPT conversation ID, Confluence page ID, etc.)
+### Rationale
 
-**API:** IDs are server-assigned only; clients never provide IDs on creation.
+| Factor | Impact |
+|--------|--------|
+| **Complete Audit Trail** | Every state change is recorded as new entity |
+| **Provenance Tracking** | Can trace any artifact back to its creation |
+| **Simplified Concurrency** | No concurrent update conflicts |
+| **Event Sourcing Compatible** | Can replay history, reconstruct any point in time |
+| **Debug Friendly** | What you see is what was created |
 
----
+### Implementation
 
-## DD-006: Pluggable Embedding Provider Architecture
+**Removed Operations:**
+- `PUT/PATCH /artifacts/{id}` - No updates
+- `DELETE /artifacts/{id}` - No deletes
+- `PUT/PATCH /relations/{id}` - No updates
+- `DELETE /relations/{id}` - No deletes
+- `DELETE /embeddings/{id}` - No deletes
 
-Support multiple embedding providers with auto-detection and fallback.
+**Version Pattern:**
+Instead of updating an artifact, create a new artifact with a `supersedes` relation:
 
-**Supported Providers:**
-| Provider | Priority | Environment Variable |
-|----------|----------|---------------------|
-| Voyage AI | Primary (Anthropic recommended) | VOYAGE_API_KEY |
-| OpenAI | Fallback | OPENAI_API_KEY |
-| Ollama | Local/offline | OLLAMA_BASE_URL |
+```
+Artifact A (v1) ← supersedes ← Artifact B (v2) ← supersedes ← Artifact C (v3)
+```
 
-**Provider Interface:**
-- `list_models()` - Dynamic model discovery
-- `generate_embedding()` - Single text
-- `generate_embeddings_batch()` - Multiple texts
-- `is_configured()` - Check API key availability
-
-**Model IDs:** String-based (not enums) for flexibility with new models.
-
----
-
-## DD-007: Client-Side Chunking Strategy
-
-Chunking is the responsibility of import clients, not the storage layer.
-
-**Rationale:**
-- Different content types need different strategies (code, markdown, conversations)
-- Domain expertise belongs in client applications
-- Storage layer stays ontology-agnostic
-
-**Pattern:**
-1. Client imports parent document (artifact_type: document)
-2. Client creates chunk artifacts (artifact_type: chunk)
-3. Client creates child_of relations between chunks and parent
-4. Client creates embeddings for chunks
+This preserves the entire history while clearly indicating editorial intent.
 
 ---
 
-## DD-008: Advanced Search Filters
+## Decision 3: Unified Artifact Model
 
-Search API supports filtering beyond artifact_types.
+### Context
+The V1 design had separate tables for different content types. This created unnecessary schema complexity and JOIN overhead.
 
-**Supported Filters:**
-- artifact_types, source, source_system
-- created_after, created_before
-- metadata_filters (JSONB containment)
-- parent_artifact_id (search within document's chunks)
+### Decision
+**Everything is an artifact.** Type discrimination via `artifact_type` field.
 
----
+### Artifact Categories
 
-## DD-009: Unified Artifact Model (V2)
+| Category | Types | Description |
+|----------|-------|-------------|
+| **Content** | conversation, document, note | Primary source material |
+| **Positional** | chunk, quote, highlight, annotation, reference, bookmark | References within content |
+| **Derived** | intent, decision, analysis, summary, finding, question, answer | Knowledge extracted from content |
 
-**Date:** December 28, 2025  
-**Status:** Accepted
-
-Consolidate Intent and Decision tables into the Artifact abstraction.
-
-**V1 Tables:**
-- artifacts, intents, intent_groups, decisions (separate tables)
-
-**V2 Tables:**
-- artifacts (with extended type enum including intent, decision, analysis, etc.)
-
-**Artifact Types:**
-- Raw: conversation, document, note, chunk
-- Derived: intent, decision, analysis, summary, conclusion, finding, question, answer
-
-**Entity Types (simplified):**
-- artifact, artifact_version, span
-
-**Rationale:**
-- Single abstraction reduces complexity
-- Enables unified search across all knowledge types
-- Provides flexibility for unknown future use cases
-- Reduces table proliferation (each concept ≠ new table + service + router)
-- Avoids ontological commitment before domain is understood
-
-**Patterns for Derived Knowledge:**
-- Decision → Intent: Use relation with type "resolves"
-- Decision → Source: Use relation with type "derived_from"
-- Supersession: Use relation with type "supersedes"
+### Hierarchy
+- **parent_artifact_id**: Self-reference for tree structures (document → chunks)
+- **start_offset/end_offset**: Character positions for positional types
 
 ---
 
-## Index
+## Decision 4: Vocabulary Tables for Type Safety
 
-| ID | Title | Date |
-|----|-------|------|
-| DD-001 | Dedicated PostgreSQL Schema | Dec 26, 2025 |
-| DD-002 | Multi-Tenant Architecture | Dec 26, 2025 |
-| DD-003 | Raw SQL (No ORM) | Dec 26, 2025 |
-| DD-004 | Flexible Dependency Versions | Dec 26, 2025 |
-| DD-005 | SERIAL Primary Keys | Dec 26, 2025 |
-| DD-006 | Pluggable Embedding Providers | Dec 28, 2025 |
-| DD-007 | Client-Side Chunking | Dec 28, 2025 |
-| DD-008 | Advanced Search Filters | Dec 28, 2025 |
-| DD-009 | Unified Artifact Model | Dec 28, 2025 |
+### Context
+Using plain strings for types leads to typos and inconsistency. Using enums requires schema changes for new types.
+
+### Decision
+Use **vocabulary tables** (lookup tables with code as primary key):
+
+- `artifact_type` - Valid artifact types
+- `relation_type` - Valid relation types with inverse metadata
+- `tenant_type` - Valid tenant types
+
+### Benefits
+- **Type safety**: Foreign keys enforce valid values
+- **Extensibility**: Add new types with INSERT, no schema migration
+- **Metadata**: Can store display names, descriptions, groupings
+- **Bidirectional Relations**: `inverse_code` enables efficient graph traversal
+
+---
+
+## Decision 5: Simplified Provenance Model
+
+### Context
+V1 had complex provenance with multiple action types and entity type enums.
+
+### Decision
+Simplify to:
+- **One action**: `create` (since we're append-only)
+- **TEXT fields**: For flexibility (entity_type, actor_type)
+- **Auto-creation**: Events created automatically by services, not via API
+
+### Actor Types
+- `user` - Human user
+- `system` - Automated system process
+- `llm` - Language model
+- `api_client` - External API client
+- `migration` - Database migration
+
+---
+
+## Decision 6: No Explicit Version Table
+
+### Context
+V1 had an `artifact_version` table to track versions separately from artifacts.
+
+### Decision
+Remove `artifact_version`. Each artifact is its own immutable identity.
+
+### Versioning Pattern
+Use the `supersedes` / `superseded_by` relation types to express editorial intent:
+
+```python
+# New version supersedes old version
+POST /relations
+{
+    "source_id": "new-artifact-uuid",
+    "target_id": "old-artifact-uuid", 
+    "relation_type": "supersedes",
+    "confidence": 1.0
+}
+```
+
+This approach:
+- Preserves both versions as first-class artifacts
+- Makes version history queryable via relations
+- Allows multiple "latest" versions (branching)
+- Separates identity from editorial decisions
+
+---
+
+## Decision 7: Client-Optional UUID Generation
+
+### Context
+Forcing all clients to generate UUIDs is a burden for simple use cases.
+
+### Decision
+**Optional client ID**: If client provides UUID, use it. If not, server generates one.
+
+```python
+# Client A (Dragonfly): provides UUID for pre-linking
+POST /artifacts
+{"id": "01926a5c-...", "artifact_type": "situation", "content": "..."}
+→ 201 Created with provided ID
+
+# Client B (simple script): omits UUID
+POST /artifacts
+{"artifact_type": "document", "content": "..."}
+→ 201 Created with server-generated UUID
+```
+
+---
+
+## Migration Notes
+
+### From V1 to V2
+Since Mímir is in development with no production data:
+1. Drop all existing tables
+2. Run new migrations 001-005
+3. Re-import any test data with new schema
+
+### For Production Systems (Future)
+If Mímir had production data, migration would require:
+1. Add UUID columns to existing tables
+2. Generate UUIDs for existing records
+3. Update foreign keys to use UUIDs
+4. Deprecate integer IDs over time
+
+---
+
+## API Summary
+
+### Created Operations (V2)
+| Endpoint | Action | Returns |
+|----------|--------|---------|
+| `POST /artifacts` | Create artifact | 201 Created / 409 Conflict |
+| `GET /artifacts` | List artifacts | 200 OK |
+| `GET /artifacts/{uuid}` | Get artifact | 200 OK / 404 Not Found |
+| `GET /artifacts/{uuid}/children` | Get children | 200 OK |
+| `POST /relations` | Create relation | 201 Created / 409 Conflict |
+| `GET /relations` | List relations | 200 OK |
+| `GET /relations/{uuid}` | Get relation | 200 OK / 404 Not Found |
+| `GET /relations/artifact/{uuid}` | Get artifact relations | 200 OK |
+| `POST /embeddings` | Create embedding | 201 Created |
+| `GET /embeddings` | List embeddings | 200 OK |
+| `GET /embeddings/{uuid}` | Get embedding | 200 OK / 404 Not Found |
+| `GET /embeddings/artifact/{uuid}` | Get artifact embeddings | 200 OK |
+| `POST /embeddings/similar` | Find similar | 200 OK |
+| `GET /provenance` | List events | 200 OK |
+| `GET /provenance/artifact/{uuid}` | Get artifact history | 200 OK |
+
+### Removed Operations
+- All `PUT/PATCH` endpoints (no updates)
+- All `DELETE` endpoints (no deletes)
+- `POST /provenance` (auto-created)
+- All version-specific endpoints (artifacts are their own identity)
+
+---
+
+## Python Client Considerations (Dragonfly)
+
+### UUID Generation
+```python
+# Python 3.14+ (built-in)
+from uuid import uuid7
+artifact_id = uuid7()
+
+# Python 3.13 (via uuid7 package)
+from uuid_extensions import uuid7
+artifact_id = uuid7()
+```
+
+### Pre-linking Pattern
+```python
+# Generate IDs before any API calls
+situation_id = uuid7()
+assessment_id = uuid7()
+decision_id = uuid7()
+
+# Build graph locally
+situation = {"id": situation_id, "artifact_type": "situation", ...}
+assessment = {"id": assessment_id, "artifact_type": "assessment", ...}
+decision = {"id": decision_id, "artifact_type": "decision", ...}
+
+# Relations reference UUIDs directly
+relations = [
+    {"source_id": assessment_id, "target_id": situation_id, "relation_type": "derived_from"},
+    {"source_id": decision_id, "target_id": assessment_id, "relation_type": "derived_from"},
+]
+
+# Persist entire graph
+for artifact in [situation, assessment, decision]:
+    client.post("/artifacts", json=artifact)
+for relation in relations:
+    client.post("/relations", json=relation)
+```
+
+---
+
+*Last Updated: January 2026*

@@ -110,7 +110,7 @@ Does not auto-delete, archive, summarize-away, or compress content.
 Allowed capabilities that fit the storage role:
 
 - Shape validation (IDs, required fields, allowed relation types)
-- Idempotent upserts and version history
+- Idempotent creates via client-provided UUIDs (409 on duplicate)
 - Index maintenance (FTS, vector, graph adjacency)
 - Query execution (search, filtering, traversal)
 - Provenance recording (model IDs, pipeline versions, source spans)

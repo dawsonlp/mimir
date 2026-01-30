@@ -191,7 +191,7 @@ ALTER TYPE mimirdata.artifact_type ADD VALUE 'intent_group';
 
 ## References
 
-- Original conversation: `v2/docs/original_conversation.txt` (private - excluded from repo via .gitignore)
-- V2 Requirements: `v2/docs/requirements.md`
-- V2 Data Model: `v2/docs/data-model.md`
-- Current Schema: `v2/migrations/versions/001_schema_and_tenant.up.sql`
+- Original conversation: `docs/original_conversation.txt` (private - excluded from repo via .gitignore)
+- Requirements: `docs/requirements.md`
+- Data Model: `docs/data-model.md`
+- Current Schema: `backend/migrations/versions/001_schema_and_tenant.up.sql`

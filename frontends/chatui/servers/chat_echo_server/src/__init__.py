@@ -1,0 +1,1 @@
+"""Chat Echo Server - LLM + Mimir integration."""
