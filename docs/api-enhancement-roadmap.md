@@ -272,7 +272,13 @@ ContextHintsApplied:
 
 ---
 
-## P2: Relation-Aware Search Filters
+## P2: Relation-Aware Search Filters ✅ COMPLETE
+
+> **Implemented**: 2026-01-29  
+> **Files Modified**: 
+> - `backend/src/mimir/services/search_service.py` - Added `get_related_artifact_ids()` and `_filter_results_by_relation()` helpers, also fixed V2 schema compatibility (removed `updated_at`)
+> - `backend/src/mimir/routers/search.py` - Added `related_to`, `relation_type`, `relation_direction` parameters to all search endpoints
+> - `scripts/test_relation_search.sh` - Integration test script
 
 ### Problem Statement
 Current search endpoints find artifacts by content similarity but cannot filter based on relationship structure. Use cases like "find all summaries derived from documents about PostgreSQL" require post-search filtering.

@@ -209,21 +209,208 @@ All content types share the same endpoints. Type discrimination via `artifact_ty
 
 ## Search
 
+Mímir provides three search modes plus similarity search and relation-aware filtering.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | /search | Unified search (semantic, fulltext, or hybrid) |
-| POST | /search/semantic | Vector similarity search only |
-| POST | /search/fulltext | PostgreSQL full-text search only |
-| POST | /search/similar | Find artifacts similar to a given artifact |
+| GET | /search/fulltext | PostgreSQL full-text search |
+| POST | /search/semantic | Vector similarity search |
+| POST | /search/hybrid | Combined fulltext + semantic with RRF ranking |
+| GET | /search/similar/{artifact_id} | Find artifacts similar to a given artifact |
 
-**Request Fields:**
-- query: Search query text
-- search_type: semantic, fulltext, or hybrid
-- model: Embedding model (for semantic search)
-- limit, offset: Pagination
-- artifact_types: Filter by artifact types
-- min_similarity: Minimum similarity threshold
-- include_content: Include full content in results
+### Full-Text Search
+
+**Endpoint:** `GET /search/fulltext?query={text}`
+
+Uses PostgreSQL's built-in full-text search with ranking.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query` | string | required | Search text |
+| `artifact_types` | string[] | null | Filter by artifact types |
+| `limit` | int | 20 | Max results (1-100) |
+| `offset` | int | 0 | Pagination offset |
+| `related_to` | UUID | null | Filter to artifacts related to this artifact |
+| `relation_type` | string | null | Filter by relation type (requires `related_to`) |
+| `relation_direction` | string | `both` | `incoming`, `outgoing`, or `both` |
+
+**Example:**
+```bash
+# Basic fulltext search
+curl -X GET "http://localhost:38000/search/fulltext?query=PostgreSQL" \
+  -H "X-Tenant-ID: 1"
+
+# Search with artifact type filter
+curl -X GET "http://localhost:38000/search/fulltext?query=security&artifact_types=decision&artifact_types=finding" \
+  -H "X-Tenant-ID: 1"
+```
+
+### Semantic Search
+
+**Endpoint:** `POST /search/semantic`
+
+Uses vector similarity (cosine distance) against pre-computed embeddings.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `artifact_types` | string[] | null | Filter by artifact types |
+| `limit` | int | 20 | Max results (1-100) |
+| `similarity_threshold` | float | 0.0 | Minimum similarity (0.0-1.0) |
+| `model` | string | null | Embedding model to use |
+| `related_to` | UUID | null | Filter to artifacts related to this artifact |
+| `relation_type` | string | null | Filter by relation type (requires `related_to`) |
+| `relation_direction` | string | `both` | `incoming`, `outgoing`, or `both` |
+
+**Request Body:** List of floats representing the query embedding vector
+
+**Example:**
+```bash
+# Semantic search with pre-computed query embedding
+curl -X POST "http://localhost:38000/search/semantic?limit=10" \
+  -H "X-Tenant-ID: 1" \
+  -H "Content-Type: application/json" \
+  -d '[0.1, 0.2, 0.3, ...]'  # 1536-dimensional vector for OpenAI embeddings
+```
+
+### Hybrid Search
+
+**Endpoint:** `POST /search/hybrid?query={text}`
+
+Combines fulltext and semantic search using Reciprocal Rank Fusion (RRF).
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query` | string | required | Search text |
+| `artifact_types` | string[] | null | Filter by artifact types |
+| `limit` | int | 20 | Max results (1-100) |
+| `rrf_k` | int | 60 | RRF constant (higher = less aggressive ranking) |
+| `semantic_weight` | float | 0.5 | Weight for semantic scores (0.0-1.0) |
+| `model` | string | null | Embedding model to use |
+| `related_to` | UUID | null | Filter to artifacts related to this artifact |
+| `relation_type` | string | null | Filter by relation type (requires `related_to`) |
+| `relation_direction` | string | `both` | `incoming`, `outgoing`, or `both` |
+
+**Request Body:** List of floats representing the query embedding vector
+
+**Example:**
+```bash
+# Hybrid search with 70% weight on semantic
+curl -X POST "http://localhost:38000/search/hybrid?query=database%20performance&semantic_weight=0.7" \
+  -H "X-Tenant-ID: 1" \
+  -H "Content-Type: application/json" \
+  -d '[0.1, 0.2, 0.3, ...]'
+```
+
+### Similarity Search
+
+**Endpoint:** `GET /search/similar/{artifact_id}`
+
+Find artifacts similar to a given artifact using its embedding.
+
+**Path Parameters:**
+- `artifact_id`: UUID of the source artifact
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | int | 10 | Max results (1-50) |
+| `artifact_types` | string[] | null | Filter by artifact types |
+| `model` | string | null | Embedding model to use |
+
+### Relation-Aware Search Filters
+
+All search endpoints support filtering results based on relationship structure. This is powerful for queries like:
+- "Find all summaries derived from this document"
+- "Find notes that reference this decision"
+- "Find decisions related to this analysis"
+
+**Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `related_to` | UUID of the anchor artifact. Only return artifacts that have a relation to/from this artifact. |
+| `relation_type` | Filter by specific relation type (e.g., `derived_from`, `supports`, `references`). Requires `related_to`. |
+| `relation_direction` | Which direction to check: `incoming` (others → anchor), `outgoing` (anchor → others), or `both`. |
+
+**How Directions Work:**
+
+Given a relation: `source_id → target_id`
+
+| Direction | Anchor Position | Returns |
+|-----------|-----------------|---------|
+| `outgoing` | Anchor is `source_id` | Artifacts that anchor points TO |
+| `incoming` | Anchor is `target_id` | Artifacts that point TO anchor |
+| `both` | Either position | All related artifacts |
+
+**Examples:**
+
+```bash
+# Find all artifacts related to a specific document
+curl -X GET "http://localhost:38000/search/fulltext?query=PostgreSQL&related_to=01926a5c-0001-7000-8000-000000000001" \
+  -H "X-Tenant-ID: 1"
+
+# Find only artifacts derived FROM this document (incoming relations where doc is target)
+curl -X GET "http://localhost:38000/search/fulltext?query=PostgreSQL&related_to=01926a5c-0001-7000-8000-000000000001&relation_direction=incoming" \
+  -H "X-Tenant-ID: 1"
+
+# Find only summaries derived from this document
+curl -X GET "http://localhost:38000/search/fulltext?query=PostgreSQL&related_to=01926a5c-0001-7000-8000-000000000001&relation_type=derived_from&artifact_types=summary" \
+  -H "X-Tenant-ID: 1"
+
+# Semantic search filtered by relation
+curl -X POST "http://localhost:38000/search/semantic?related_to=01926a5c-0001-7000-8000-000000000001&relation_type=supports" \
+  -H "X-Tenant-ID: 1" \
+  -H "Content-Type: application/json" \
+  -d '[0.1, 0.2, 0.3, ...]'
+```
+
+**Important Notes:**
+- Relation filters are applied **post-search**, meaning search scoring/ranking is computed first, then filtered
+- This preserves the relevance order of results
+- If `relation_type` is specified without `related_to`, it is ignored
+- The anchor artifact itself is not included in results
+
+### Search Response
+
+All search endpoints return the same response structure:
+
+```json
+{
+  "results": [
+    {
+      "artifact": {
+        "id": "01926a5c-8b4e-7d3f-9e1a-2c4d6e8f0a1b",
+        "tenant_id": 1,
+        "artifact_type": "decision",
+        "title": "Use PostgreSQL",
+        "content": "We decided to use PostgreSQL because...",
+        "created_at": "2026-01-12T05:49:00Z",
+        "metadata": {...}
+      },
+      "score": 0.85,
+      "rank": 1
+    },
+    ...
+  ],
+  "total": 15,
+  "query": "PostgreSQL"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `results[].artifact` | The matched artifact |
+| `results[].score` | Relevance score (interpretation varies by search type) |
+| `results[].rank` | Position in results (1-indexed) |
+| `total` | Total matching artifacts (for pagination) |
+| `query` | The search query used |
 
 ---
 

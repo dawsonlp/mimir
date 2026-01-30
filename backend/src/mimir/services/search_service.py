@@ -1,10 +1,95 @@
 """Search service - fulltext, semantic, and hybrid search (V2)."""
 
+from enum import Enum
+from uuid import UUID
+
 from mimir.database import get_connection
 from mimir.schemas.artifact import ArtifactResponse
 from mimir.schemas.search import SearchResponse, SearchResult
 
 SCHEMA_NAME = "mimirdata"
+
+
+class RelationDirection(str, Enum):
+    """Direction for relation-based filtering."""
+    
+    INCOMING = "incoming"   # Artifact is target (others point to it)
+    OUTGOING = "outgoing"   # Artifact is source (points to others)
+    BOTH = "both"           # Either direction
+
+
+async def get_related_artifact_ids(
+    tenant_id: int,
+    related_to: UUID,
+    relation_type: str | None = None,
+    direction: RelationDirection = RelationDirection.BOTH,
+) -> set[UUID]:
+    """Get artifact IDs that have a relation to/from the specified artifact.
+    
+    Args:
+        tenant_id: Tenant ID for isolation
+        related_to: UUID of the anchor artifact
+        relation_type: Optional filter by relation type
+        direction: incoming (anchor is target), outgoing (anchor is source), or both
+    
+    Returns:
+        Set of artifact UUIDs that are related to the anchor artifact
+    """
+    async with get_connection() as conn:
+        conditions = ["tenant_id = %s"]
+        params: list = [tenant_id]
+        
+        # Build direction conditions
+        direction_parts = []
+        if direction in (RelationDirection.OUTGOING, RelationDirection.BOTH):
+            direction_parts.append("source_id = %s")
+            params.append(str(related_to))
+        if direction in (RelationDirection.INCOMING, RelationDirection.BOTH):
+            direction_parts.append("target_id = %s")
+            params.append(str(related_to))
+        
+        if direction_parts:
+            conditions.append(f"({' OR '.join(direction_parts)})")
+        
+        if relation_type:
+            conditions.append("relation_type = %s")
+            params.append(relation_type)
+        
+        where_clause = " AND ".join(conditions)
+        
+        # Select the "other" artifact ID based on which side matches
+        result = await conn.execute(
+            f"""
+            SELECT DISTINCT
+                CASE 
+                    WHEN source_id = %s THEN target_id
+                    ELSE source_id
+                END as related_id
+            FROM {SCHEMA_NAME}.relation
+            WHERE {where_clause}
+            """,
+            [str(related_to)] + params,
+        )
+        rows = await result.fetchall()
+    
+    return {UUID(row[0]) if isinstance(row[0], str) else row[0] for row in rows}
+
+
+def _filter_results_by_relation(
+    results: list[SearchResult],
+    related_ids: set[UUID],
+) -> list[SearchResult]:
+    """Filter search results to only include artifacts in the related set.
+    
+    Preserves original scores and re-ranks filtered results.
+    """
+    filtered = [r for r in results if r.artifact.id in related_ids]
+    
+    # Re-assign ranks after filtering
+    for i, result in enumerate(filtered):
+        result.rank = i + 1
+    
+    return filtered
 
 
 async def fulltext_search(
@@ -39,7 +124,7 @@ async def fulltext_search(
                    start_offset, end_offset, position_metadata,
                    title, content, content_hash,
                    source, source_system, external_id, metadata,
-                   created_at, updated_at,
+                   created_at,
                    ts_rank(search_vector, plainto_tsquery('english', %s)) as rank
             FROM {SCHEMA_NAME}.artifact
             {where_clause}
@@ -52,8 +137,8 @@ async def fulltext_search(
 
     results = []
     for i, row in enumerate(rows):
-        artifact = _row_to_artifact_response(row[:16])
-        rank_score = float(row[16])
+        artifact = _row_to_artifact_response(row[:15])
+        rank_score = float(row[15])
         results.append(SearchResult(artifact=artifact, score=rank_score, rank=i + 1))
 
     return SearchResponse(results=results, total=total, query=query)
@@ -93,7 +178,7 @@ async def semantic_search(
                    a.start_offset, a.end_offset, a.position_metadata,
                    a.title, a.content, a.content_hash,
                    a.source, a.source_system, a.external_id, a.metadata,
-                   a.created_at, a.updated_at,
+                   a.created_at,
                    1 - (e.embedding <=> %s::vector) as similarity
             FROM {SCHEMA_NAME}.embedding e
             JOIN {SCHEMA_NAME}.artifact a ON a.id = e.entity_id AND e.entity_type = 'artifact'
@@ -107,9 +192,9 @@ async def semantic_search(
     # Filter by threshold and sort
     results = []
     for row in rows:
-        similarity = float(row[16])
+        similarity = float(row[15])
         if similarity >= similarity_threshold:
-            artifact = _row_to_artifact_response(row[:16])
+            artifact = _row_to_artifact_response(row[:15])
             results.append(SearchResult(artifact=artifact, score=similarity))
 
     # Sort by similarity
@@ -244,7 +329,15 @@ async def similar_artifacts(
 
 
 def _row_to_artifact_response(row: tuple) -> ArtifactResponse:
-    """Convert database row to ArtifactResponse."""
+    """Convert database row to ArtifactResponse.
+    
+    Row columns (15 total, no updated_at for V2 append-only):
+    0: id, 1: tenant_id, 2: artifact_type, 3: parent_artifact_id,
+    4: start_offset, 5: end_offset, 6: position_metadata,
+    7: title, 8: content, 9: content_hash,
+    10: source, 11: source_system, 12: external_id, 13: metadata,
+    14: created_at
+    """
     return ArtifactResponse(
         id=row[0],
         tenant_id=row[1],
@@ -261,5 +354,4 @@ def _row_to_artifact_response(row: tuple) -> ArtifactResponse:
         external_id=row[12],
         metadata=row[13],
         created_at=row[14],
-        updated_at=row[15],
     )
