@@ -30,6 +30,17 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    image: dawsonlp/mimir-api:v1.0
+    environment:
+      DATABASE_URL: postgresql://mimir:${POSTGRES_PASSWORD}@postgres:5432/mimir
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "-m", "migrations.migrate", "up"]
+    restart: "no"
+
   api:
     image: dawsonlp/mimir-api:v1.0
     ports:
@@ -40,6 +51,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:
@@ -75,19 +88,13 @@ Wait for healthy:
 docker compose ps   # Should show "healthy"
 ```
 
-## 6. Run Migrations
-
-```bash
-docker compose exec api python -m migrations.migrate up
-```
-
-## 7. Verify
+## 6. Verify
 
 ```bash
 curl http://localhost:38000/health/ready
 ```
 
-## 8. Create First Artifact
+## 7. Create First Artifact
 
 ```bash
 curl -X POST http://localhost:38000/artifacts \
