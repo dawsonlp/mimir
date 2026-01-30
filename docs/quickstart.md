@@ -2,6 +2,26 @@
 
 Get Mímir running in 5 minutes. No git clone required.
 
+## Architecture
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  postgres   │────▶│   migrate   │────▶│     api     │
+│  (database) │     │  (one-shot) │     │  (server)   │
+└─────────────┘     └─────────────┘     └─────────────┘
+     │                    │                    │
+     │                    │                    │
+  healthy ────────▶ runs migrations ───▶ starts server
+                    then exits
+```
+
+**Startup sequence:**
+1. `postgres` starts and becomes healthy
+2. `migrate` runs database migrations (idempotent), then exits
+3. `api` starts only after migrate succeeds
+
+All images are pulled from Docker Hub. No build required.
+
 ## 1. Create Directory
 
 ```bash
@@ -119,4 +139,64 @@ http://localhost:38000/docs
 ```bash
 docker compose down      # Keep data
 docker compose down -v   # Delete data
+```
+
+## Upgrades
+
+To upgrade to a new version:
+
+```bash
+# Pull new images
+docker compose pull
+
+# Restart (migrate runs automatically for new migrations)
+docker compose up -d
+```
+
+The migrate service is idempotent - it tracks applied migrations in `mimirdata.schema_migrations` and only runs pending ones.
+
+## Troubleshooting
+
+**Check service status:**
+```bash
+docker compose ps
+docker compose logs migrate   # See migration output
+docker compose logs api       # See API logs
+```
+
+**Migration failed:**
+```bash
+# View migration logs
+docker compose logs migrate
+
+# Re-run migrations manually
+docker compose run --rm migrate
+```
+
+**Reset everything:**
+```bash
+docker compose down -v   # Removes data volume
+docker compose up -d     # Fresh start
+```
+
+## Data Persistence
+
+Data is stored in a Docker named volume (`postgres_data`):
+- Survives container restarts and upgrades
+- Located at `/var/lib/docker/volumes/mimir_postgres_data`
+- Backed up via standard Docker volume backup methods
+
+## Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `POSTGRES_PASSWORD` | Database password | **Required** |
+| `LOG_LEVEL` | API log level | INFO |
+| `OLLAMA_BASE_URL` | Ollama endpoint for embeddings | http://host.docker.internal:11434 |
+| `DEFAULT_EMBEDDING_MODEL` | Embedding model | nomic-embed-text |
+| `OPENAI_API_KEY` | OpenAI key for embeddings | (optional) |
+
+Add variables to `.env`:
+```bash
+echo "LOG_LEVEL=DEBUG" >> .env
 ```
