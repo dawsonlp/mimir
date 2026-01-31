@@ -12,6 +12,7 @@ from mimir.routers import (
     artifact_types,
     artifacts,
     context,
+    embedding_types,
     embeddings,
     provenance,
     relation_types,
@@ -59,10 +60,16 @@ Knowledge graph edges connecting artifacts.
 - Types: `references`, `supports`, `contradicts`, `derived_from`, `supersedes`, `parent_of`, `child_of`, `implements`, `resolves`, `related_to`
 - Each type has an inverse (e.g., `references` ↔ `referenced_by`)
 
+### Embedding Type
+Vocabulary table for embedding models. Each type creates a dedicated vector table.
+- Providers: OpenAI, Ollama, Voyage
+- Each type has fixed dimensions for proper HNSW indexing
+
 ### Embedding
 Vector representations for semantic search.
-- Models: OpenAI (`text-embedding-3-small/large`), Ollama (`nomic-embed-text`, `mxbai-embed-large`)
-- HNSW index for fast approximate nearest neighbor
+- Uses multi-table architecture (one vector table per embedding type)
+- Each type has its own HNSW index
+- Requires `embedding_type` to be registered first
 
 ### Provenance Event
 Immutable audit trail.
@@ -77,8 +84,9 @@ Immutable audit trail.
 3. `POST /relations` linking decision → intent with `relation_type=resolves`
 
 **Semantic search:**
-1. `POST /embeddings` to embed artifacts
-2. `POST /search/semantic` or `POST /search/hybrid` to find similar
+1. `POST /embedding-types` to register model (creates vector table)
+2. `POST /embeddings` to embed artifacts
+3. `POST /embeddings/similar` or `POST /search/semantic` to find similar
 """
 
 # Tag descriptions for Swagger UI
@@ -108,8 +116,12 @@ TAGS_METADATA = [
         "description": "**Knowledge graph edges** connecting artifacts and versions. Query incoming, outgoing, or both directions. Use for lineage tracking, evidence linking, and hierarchies.",
     },
     {
+        "name": "embedding-types",
+        "description": "**Embedding model vocabulary.** Register new embedding types to create vector tables. Each type has fixed dimensions and HNSW index.",
+    },
+    {
         "name": "embeddings",
-        "description": "**Vector representations** for semantic search. Supports OpenAI and Ollama models. Use chunk_index for multi-vector documents.",
+        "description": "**Vector representations** for semantic search. Supports multiple models via embedding_type. Each embedding type has its own optimized vector table.",
     },
     {
         "name": "search",
@@ -156,6 +168,7 @@ app.include_router(artifacts.router)
 app.include_router(context.router)
 app.include_router(relation_types.router)
 app.include_router(relations.router)
+app.include_router(embedding_types.router)
 app.include_router(embeddings.router)
 app.include_router(search.router)
 app.include_router(provenance.router)

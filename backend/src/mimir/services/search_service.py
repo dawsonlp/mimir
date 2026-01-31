@@ -1,4 +1,10 @@
-"""Search service - fulltext, semantic, and hybrid search (V2)."""
+"""Search service - fulltext, semantic, and hybrid search (V2.1).
+
+V2.1 Changes:
+- Semantic search now requires embedding_type parameter
+- Vectors are queried from mimir_vectors.vec_{type} child tables
+- Uses artifact_id instead of entity_id/entity_type
+"""
 
 from enum import Enum
 from uuid import UUID
@@ -8,6 +14,7 @@ from mimir.schemas.artifact import ArtifactResponse
 from mimir.schemas.search import SearchResponse, SearchResult
 
 SCHEMA_NAME = "mimirdata"
+VECTOR_SCHEMA = "mimir_vectors"
 
 
 class RelationDirection(str, Enum):
@@ -16,6 +23,21 @@ class RelationDirection(str, Enum):
     INCOMING = "incoming"   # Artifact is target (others point to it)
     OUTGOING = "outgoing"   # Artifact is source (points to others)
     BOTH = "both"           # Either direction
+
+
+async def _get_embedding_type_info(embedding_type: str) -> tuple[int, str] | None:
+    """Get embedding type dimensions and vector table name."""
+    async with get_connection() as conn:
+        result = await conn.execute(
+            f"""
+            SELECT dimensions, vector_table_name
+            FROM {SCHEMA_NAME}.embedding_type
+            WHERE code = %s AND is_active = true
+            """,
+            (embedding_type,),
+        )
+        row = await result.fetchone()
+    return (row[0], row[1]) if row else None
 
 
 async def get_related_artifact_ids(
@@ -147,28 +169,36 @@ async def fulltext_search(
 async def semantic_search(
     tenant_id: int,
     query_vector: list[float],
+    embedding_type: str,
     artifact_types: list[str] | None = None,
     limit: int = 20,
     similarity_threshold: float = 0.0,
-    model: str | None = None,
 ) -> SearchResponse:
-    """Semantic search using vector similarity."""
+    """Semantic search using vector similarity.
+    
+    V2.1: Now requires embedding_type to know which vector table to search.
+    """
+    # Get vector table name
+    type_info = await _get_embedding_type_info(embedding_type)
+    if not type_info:
+        raise ValueError(f"Embedding type '{embedding_type}' not found or inactive")
+    
+    expected_dims, vector_table = type_info
+    if len(query_vector) != expected_dims:
+        raise ValueError(
+            f"Query vector dimensions mismatch: {embedding_type} expects {expected_dims}, got {len(query_vector)}"
+        )
+    
     vector_str = "[" + ",".join(str(v) for v in query_vector) + "]"
 
     async with get_connection() as conn:
-        # Build embedding filter
-        emb_where = "WHERE e.tenant_id = %s"
+        # Join embedding master table with vector child table and artifact
+        where_clause = "WHERE e.tenant_id = %s"
         params: list = [tenant_id]
 
-        if model:
-            emb_where += " AND e.model = %s"
-            params.append(model)
-
-        # Join with artifacts
-        artifact_where = ""
         if artifact_types:
             placeholders = ",".join(["%s"] * len(artifact_types))
-            artifact_where = f" AND a.artifact_type IN ({placeholders})"
+            where_clause += f" AND a.artifact_type IN ({placeholders})"
             params.extend(artifact_types)
 
         result = await conn.execute(
@@ -179,10 +209,11 @@ async def semantic_search(
                    a.title, a.content, a.content_hash,
                    a.source, a.source_system, a.external_id, a.metadata,
                    a.created_at,
-                   1 - (e.embedding <=> %s::vector) as similarity
+                   1 - (v.embedding <=> %s::vector) as similarity
             FROM {SCHEMA_NAME}.embedding e
-            JOIN {SCHEMA_NAME}.artifact a ON a.id = e.entity_id AND e.entity_type = 'artifact'
-            {emb_where} {artifact_where}
+            JOIN {VECTOR_SCHEMA}.{vector_table} v ON v.embedding_id = e.id
+            JOIN {SCHEMA_NAME}.artifact a ON a.id = e.artifact_id
+            {where_clause}
             ORDER BY a.id, similarity DESC
             """,
             params + [vector_str],
@@ -212,13 +243,16 @@ async def hybrid_search(
     tenant_id: int,
     query: str,
     query_vector: list[float],
+    embedding_type: str,
     artifact_types: list[str] | None = None,
     limit: int = 20,
     rrf_k: int = 60,
     semantic_weight: float = 0.5,
-    model: str | None = None,
 ) -> SearchResponse:
-    """Hybrid search using Reciprocal Rank Fusion (RRF)."""
+    """Hybrid search using Reciprocal Rank Fusion (RRF).
+    
+    V2.1: Now requires embedding_type for the semantic search component.
+    """
     # Get fulltext results
     fts_response = await fulltext_search(
         tenant_id=tenant_id,
@@ -231,9 +265,9 @@ async def hybrid_search(
     sem_response = await semantic_search(
         tenant_id=tenant_id,
         query_vector=query_vector,
+        embedding_type=embedding_type,
         artifact_types=artifact_types,
         limit=limit * 2,
-        model=model,
     )
 
     # Build rank maps
@@ -273,28 +307,33 @@ async def hybrid_search(
 
 async def similar_artifacts(
     tenant_id: int,
-    artifact_id: int,
+    artifact_id: UUID,
+    embedding_type: str,
     limit: int = 10,
     artifact_types: list[str] | None = None,
-    model: str | None = None,
 ) -> SearchResponse:
-    """Find artifacts similar to a given artifact using its embedding."""
+    """Find artifacts similar to a given artifact using its embedding.
+    
+    V2.1: Now requires embedding_type to know which vector table to query.
+    """
+    # Get vector table name
+    type_info = await _get_embedding_type_info(embedding_type)
+    if not type_info:
+        raise ValueError(f"Embedding type '{embedding_type}' not found or inactive")
+    
+    _, vector_table = type_info
+
     async with get_connection() as conn:
-        # Get the artifact's embedding
-        emb_where = "WHERE tenant_id = %s AND entity_type = 'artifact' AND entity_id = %s"
-        params: list = [tenant_id, artifact_id]
-
-        if model:
-            emb_where += " AND model = %s"
-            params.append(model)
-
+        # Get the artifact's embedding from the vector table
         result = await conn.execute(
             f"""
-            SELECT embedding::text FROM {SCHEMA_NAME}.embedding
-            {emb_where}
+            SELECT v.embedding::text 
+            FROM {SCHEMA_NAME}.embedding e
+            JOIN {VECTOR_SCHEMA}.{vector_table} v ON v.embedding_id = e.id
+            WHERE e.tenant_id = %s AND e.artifact_id = %s AND e.embedding_type = %s
             LIMIT 1
             """,
-            params,
+            (tenant_id, str(artifact_id), embedding_type),
         )
         row = await result.fetchone()
 
@@ -309,9 +348,9 @@ async def similar_artifacts(
     response = await semantic_search(
         tenant_id=tenant_id,
         query_vector=query_vector,
+        embedding_type=embedding_type,
         artifact_types=artifact_types,
         limit=limit + 1,  # +1 to account for excluding self
-        model=model,
     )
 
     # Filter out the source artifact

@@ -54,6 +54,38 @@ Tenant context is required via `X-Tenant-ID` header on all entity endpoints.
 | PATCH | /relation-types/{code} | Update relation type |
 | DELETE | /relation-types/{code} | Delete relation type |
 
+### Embedding Types
+
+Embedding types define embedding models and their vector dimensions. Creating an embedding type automatically creates a dedicated vector table with HNSW index in the `mimir_vectors` schema.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /embedding-types | Create embedding type (creates vector table) |
+| GET | /embedding-types | List embedding types |
+| GET | /embedding-types/{code} | Get embedding type by code |
+| DELETE | /embedding-types/{code} | Deactivate embedding type (soft delete) |
+
+**Create Embedding Type:**
+
+```json
+{
+  "code": "nomic-embed-text",
+  "display_name": "Nomic Embed Text",
+  "provider": "ollama",
+  "dimensions": 768,
+  "distance_metric": "cosine",
+  "max_tokens": 8192,
+  "description": "Good balance of quality and speed for RAG"
+}
+```
+
+**Code Validation:** Codes must be 3-50 characters, lowercase alphanumeric with hyphens, starting with a letter. Pattern: `^[a-z][a-z0-9-]{2,49}$`
+
+**What Happens on Create:**
+1. Creates row in `mimirdata.embedding_type` vocabulary table
+2. Creates `mimir_vectors.vec_{sanitized_code}` vector table
+3. Creates HNSW index for efficient similarity search
+
 ---
 
 ## Artifacts (Append-Only)
@@ -186,23 +218,92 @@ All content types share the same endpoints. Type discrimination via `artifact_ty
 
 ## Embeddings (Append-Only)
 
+Embeddings use a multi-table architecture where each embedding type has its own vector table with proper HNSW indexing. See `docs/embedding-architecture-design.md` for full details.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | /embeddings | Create embedding for artifact |
 | GET | /embeddings | List embeddings (filterable) |
 | GET | /embeddings/{id} | Get embedding by UUID |
 | GET | /embeddings/artifact/{id} | Get all embeddings for artifact |
-| GET | /embeddings/providers | List available embedding providers and models |
+| POST | /embeddings/similar | Find similar embeddings by vector |
 
 **Not supported:**
 - ~~DELETE /embeddings/{id}~~ — No deletes
+
+### Create Embedding
+
+**Prerequisites:** The `embedding_type` must be registered first via `POST /embedding-types`.
+
+**Request:**
+```json
+{
+  "artifact_id": "01926a5c-8b4e-7d3f-9e1a-2c4d6e8f0a1b",
+  "embedding_type": "nomic-embed-text",
+  "embedding": [0.1, 0.2, ...],  // Must match type's dimensions
+  "metadata": {}
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": "01926a5c-9999-7d3f-9e1a-000000000001",
+  "tenant_id": 1,
+  "artifact_id": "01926a5c-8b4e-7d3f-9e1a-2c4d6e8f0a1b",
+  "embedding_type": "nomic-embed-text",
+  "created_at": "2026-01-12T05:49:00Z",
+  "metadata": {}
+}
+```
+
+**Response (400 Bad Request)** — If dimensions don't match:
+```json
+{
+  "detail": "Embedding dimensions mismatch: nomic-embed-text expects 768, got 1536"
+}
+```
+
+### Similarity Search
+
+**Endpoint:** `POST /embeddings/similar`
+
+Searches the vector table for the specified embedding type using HNSW index.
+
+**Request:**
+```json
+{
+  "query_vector": [0.1, 0.2, ...],
+  "embedding_type": "nomic-embed-text",
+  "limit": 20,
+  "similarity_threshold": 0.7,
+  "artifact_types": ["decision", "finding"]
+}
+```
+
+**Response:**
+```json
+{
+  "results": [
+    {
+      "embedding_id": "...",
+      "artifact_id": "...",
+      "embedding_type": "nomic-embed-text",
+      "similarity": 0.92
+    }
+  ],
+  "total": 15
+}
+```
+
+**Note:** You cannot search across different embedding types because they have different dimensions.
 
 ### Query Parameters
 
 | Parameter | Description |
 |-----------|-------------|
-| artifact_id | Filter by artifact |
-| model | Filter by model name |
+| artifact_id | Filter by artifact UUID |
+| embedding_type | Filter by embedding type code |
 | limit, offset | Pagination |
 
 ---

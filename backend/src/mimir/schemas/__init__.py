@@ -17,6 +17,13 @@ from mimir.schemas.embedding import (
     EmbeddingListResponse,
     EmbeddingResponse,
     EmbeddingWithVectorResponse,
+    SimilaritySearchRequest,
+    SimilaritySearchResponse,
+)
+from mimir.schemas.embedding_type import (
+    EmbeddingTypeCreate,
+    EmbeddingTypeListResponse,
+    EmbeddingTypeResponse,
 )
 from mimir.schemas.provenance import (
     ProvenanceEventCreate,
@@ -75,11 +82,17 @@ __all__ = [
     "RelationTypeUpdate",
     "RelationTypeResponse",
     "RelationTypeListResponse",
-    # Embedding (V2: append-only)
+    # Embedding Type
+    "EmbeddingTypeCreate",
+    "EmbeddingTypeResponse",
+    "EmbeddingTypeListResponse",
+    # Embedding (V2: append-only, multi-table)
     "EmbeddingCreate",
     "EmbeddingResponse",
     "EmbeddingWithVectorResponse",
     "EmbeddingListResponse",
+    "SimilaritySearchRequest",
+    "SimilaritySearchResponse",
     # Search
     "SearchQuery",
     "SemanticSearchQuery",

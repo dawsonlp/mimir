@@ -1,8 +1,9 @@
-"""Embedding API endpoints (V2 append-only).
+"""Embedding API endpoints (V2.1 multi-table architecture).
 
-V2 Changes:
-- UUID path parameters (not INT)
-- UUID artifact references (not entity_type/entity_id INT)
+V2.1 Changes:
+- Uses embedding_type FK instead of free-form model string
+- Vectors stored in separate mimir_vectors.vec_{type} tables
+- Requires embedding_type for similarity search
 - No DELETE endpoint (append-only)
 """
 
@@ -15,6 +16,8 @@ from mimir.schemas.embedding import (
     EmbeddingListResponse,
     EmbeddingResponse,
     EmbeddingWithVectorResponse,
+    SimilaritySearchRequest,
+    SimilaritySearchResponse,
 )
 from mimir.services import embedding_service
 
@@ -26,8 +29,15 @@ async def create_embedding(
     data: EmbeddingCreate,
     x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
 ) -> EmbeddingResponse:
-    """Create a new embedding for an artifact."""
-    return await embedding_service.create_embedding(x_tenant_id, data)
+    """Create a new embedding for an artifact.
+    
+    Requires the embedding_type to be registered first via POST /embedding-types.
+    The vector dimensions must match the embedding_type definition.
+    """
+    try:
+        return await embedding_service.create_embedding(x_tenant_id, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("", response_model=EmbeddingListResponse)
@@ -35,12 +45,12 @@ async def list_embeddings(
     x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    artifact_id: UUID | None = Query(None),
-    model: str | None = Query(None),
+    artifact_id: UUID | None = Query(None, description="Filter by artifact UUID"),
+    embedding_type: str | None = Query(None, description="Filter by embedding type"),
 ) -> EmbeddingListResponse:
     """List embeddings with optional filtering."""
     return await embedding_service.list_embeddings(
-        x_tenant_id, limit, offset, artifact_id, model
+        x_tenant_id, limit, offset, artifact_id, embedding_type
     )
 
 
@@ -63,31 +73,35 @@ async def get_embedding(
 async def get_artifact_embeddings(
     artifact_id: UUID,
     x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
-    model: str | None = Query(None),
+    embedding_type: str | None = Query(None, description="Filter by embedding type"),
 ) -> list[EmbeddingResponse]:
     """Get all embeddings for an artifact."""
     return await embedding_service.get_artifact_embeddings(
-        x_tenant_id, artifact_id, model
+        x_tenant_id, artifact_id, embedding_type
     )
 
 
-@router.post("/similar")
+@router.post("/similar", response_model=SimilaritySearchResponse)
 async def find_similar(
-    query_vector: list[float],
+    request: SimilaritySearchRequest,
     x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
-    limit: int = Query(20, ge=1, le=100),
-    model: str | None = Query(None),
-    artifact_types: list[str] | None = Query(None),
-    similarity_threshold: float = Query(0.0, ge=0.0, le=1.0),
-) -> list[dict]:
-    """Find similar embeddings by vector."""
-    results = await embedding_service.find_similar(
-        x_tenant_id, query_vector, limit, model, artifact_types, similarity_threshold
-    )
-    return [
-        {"embedding": emb.model_dump(), "similarity": score}
-        for emb, score in results
-    ]
+) -> SimilaritySearchResponse:
+    """Find similar embeddings by vector.
+    
+    Requires embedding_type to know which vector table to search.
+    You cannot search across different embedding types (different dimensions).
+    """
+    try:
+        return await embedding_service.find_similar(
+            tenant_id=x_tenant_id,
+            query_vector=request.query_vector,
+            embedding_type=request.embedding_type,
+            limit=request.limit,
+            artifact_types=request.artifact_types,
+            similarity_threshold=request.similarity_threshold,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # NOTE: DELETE endpoints removed - embeddings are append-only

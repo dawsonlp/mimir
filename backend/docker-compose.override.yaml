@@ -2,6 +2,16 @@
 # This file is automatically applied with docker-compose.yaml
 
 services:
+  migrate:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/api/Dockerfile
+      target: builder  # Use builder stage with dependencies
+    volumes:
+      # Mount migrations for local development
+      - ./src/mimir:/app/mimir:ro
+      - ./migrations:/app/migrations:ro
+
   api:
     build:
       context: .
