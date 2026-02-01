@@ -259,6 +259,7 @@ async def find_similar(
             params.append(artifact_types)
 
         # Use cosine distance (<=> operator)
+        # Note: vector_str must come first for the SELECT clause similarity calc
         result = await conn.execute(
             f"""
             SELECT e.id, e.artifact_id, e.embedding_type,
@@ -270,7 +271,7 @@ async def find_similar(
             ORDER BY v.embedding <=> %s::vector
             LIMIT %s
             """,
-            params + [vector_str, vector_str, limit],
+            [vector_str] + params + [vector_str, limit],
         )
         rows = await result.fetchall()
 
