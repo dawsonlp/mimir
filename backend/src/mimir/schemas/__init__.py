@@ -42,13 +42,11 @@ from mimir.schemas.relation_type import (
     RelationTypeUpdate,
 )
 from mimir.schemas.search import (
-    FulltextSearchQuery,
-    HybridSearchQuery,
-    SearchQuery,
+    HybridSearchRequest,
+    RelationDirection,
     SearchResponse,
     SearchResult,
-    SemanticSearchQuery,
-    SimilaritySearchRequest,
+    SemanticSearchRequest,
 )
 from mimir.schemas.tenant import (
     TenantCreate,
@@ -94,13 +92,11 @@ __all__ = [
     "SimilaritySearchRequest",
     "SimilaritySearchResponse",
     # Search
-    "SearchQuery",
-    "SemanticSearchQuery",
-    "FulltextSearchQuery",
-    "HybridSearchQuery",
+    "SemanticSearchRequest",
+    "HybridSearchRequest",
+    "RelationDirection",
     "SearchResult",
     "SearchResponse",
-    "SimilaritySearchRequest",
     # Provenance (V2: append-only)
     "ProvenanceEventCreate",
     "ProvenanceEventResponse",

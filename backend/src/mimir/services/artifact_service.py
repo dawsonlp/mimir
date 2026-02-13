@@ -281,7 +281,7 @@ def _row_to_artifact_response(row: tuple) -> ArtifactResponse:
         id=UUID(row[0]) if isinstance(row[0], str) else row[0],
         tenant_id=row[1],
         artifact_type=row[2],
-        parent_artifact_id=UUID(row[3]) if row[3] else None,
+        parent_artifact_id=UUID(row[3]) if isinstance(row[3], str) else row[3] if row[3] else None,
         start_offset=row[4],
         end_offset=row[5],
         position_metadata=row[6],

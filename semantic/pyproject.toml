@@ -1,0 +1,73 @@
+[tool.poetry]
+name = "mimir-semantic"
+version = "0.1.0"
+description = "Mímir Semantic Layer - Python client library for intelligent context assembly and semantic operations"
+authors = ["Development Team"]
+readme = "README.md"
+license = "MIT"
+packages = [{include = "mimir_semantic", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+
+# HTTP client for API communication
+httpx = "^0.28"
+
+# Data validation and serialization
+pydantic = "^2.0"
+pydantic-settings = "^2.0"
+
+# Environment configuration
+python-dotenv = "^1.0"
+
+[tool.poetry.group.dev.dependencies]
+# Testing
+pytest = "*"
+pytest-asyncio = "*"
+
+# Code quality
+black = "*"
+ruff = "*"
+mypy = "*"
+
+# Documentation
+sphinx = "*"
+sphinx-rtd-theme = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: tests requiring live Mimir API"
+]
+
+[tool.mypy]
+python_version = "3.13"
+mypy_path = "src"
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+warn_return_any = false
+
+[tool.ruff]
+src = ["src"]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mimir_semantic"]
+
+[tool.black]
+target-version = ["py313"]
+line-length = 88
