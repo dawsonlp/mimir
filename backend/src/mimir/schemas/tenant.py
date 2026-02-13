@@ -54,6 +54,7 @@ class TenantResponse(TenantBase):
     """Schema for tenant response."""
 
     id: int
+    deletion_policy: str = Field("soft_delete", description="Deletion policy from tenant type: soft_delete, no_delete, physical_delete")
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -103,6 +103,7 @@ class ArtifactResponse(ArtifactBase):
     tenant_id: int
     content_hash: str | None = None
     created_at: datetime
+    deleted_at: datetime | None = Field(None, description="Soft-delete timestamp (None = active)")
 
     model_config = {"from_attributes": True}
 
@@ -114,6 +115,26 @@ class ArtifactListResponse(BaseModel):
     total: int
     limit: int = 50
     offset: int = 0
+
+
+class SoftDeleteResponse(BaseModel):
+    """Response for soft-delete operation."""
+
+    deleted_id: UUID = Field(..., description="ID of the primary artifact soft-deleted")
+    cascade_count: int = Field(0, description="Number of descendant artifacts also soft-deleted")
+    deleted_ids: list[UUID] = Field(default_factory=list, description="All artifact IDs that were soft-deleted")
+    deleted_at: datetime = Field(..., description="Timestamp of deletion")
+
+
+class PhysicalDeleteResponse(BaseModel):
+    """Response for physical-delete operation."""
+
+    deleted_id: UUID = Field(..., description="ID of the primary artifact physically deleted")
+    deleted: dict[str, int] = Field(
+        ...,
+        description="Counts of rows deleted per table",
+        examples=[{"artifacts": 5, "embeddings": 10, "relations": 3, "provenance_events": 8}],
+    )
 
 
 # NOTE: ArtifactVersion schemas removed - each artifact is its own identity

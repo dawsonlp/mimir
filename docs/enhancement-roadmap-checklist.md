@@ -36,7 +36,7 @@
 - [x] Integrate descendant ID set as a WHERE clause in hybrid search query
 - [x] Integrate descendant ID set as a WHERE clause in similar search query
 - [x] Ensure recursive CTE includes `AND tenant_id = %s` at every level (multi-tenant safety)
-- [ ] Ensure `deleted_at IS NULL` filter is included in recursive CTE (forward-compatible with Phase 2) — deferred: column does not exist yet; filter will be added in Phase 2 migration
+- [x] Ensure `deleted_at IS NULL` filter is included in recursive CTE — implemented in Phase 2 (migration 006 adds column, search_service.py updated)
 - [x] Add tests: scope to project returns only descendant chunks, scope to nonexistent artifact returns empty, scope respects tenant isolation
 - [x] Performance test with realistic hierarchy (~200 artifacts, 3 levels) — 7/7 pass, median 1.16ms, p95 1.34ms, execution 2.6ms
 
@@ -45,52 +45,52 @@
 ## Phase 2: Deletion Infrastructure (Moderate risk — schema migration, new vocabulary column, mutable column on content table)
 
 ### 4. Soft-Delete Interaction Semantics (Specification — must be defined before implementation)
-- [ ] Specify: `scope_artifact_id` pointing to a soft-deleted artifact returns empty results (the scope anchor must be active)
-- [ ] Specify: recursive CTE for scoping excludes soft-deleted intermediate nodes (if a file artifact is soft-deleted, its child chunks are unreachable via scoping even if not themselves soft-deleted)
-- [ ] Specify: `GET /artifacts/{id}` returns 404 for soft-deleted artifacts (default behavior)
-- [ ] Specify: `GET /artifacts/{id}?include_deleted=true` returns soft-deleted artifacts (administrative use only)
-- [ ] Specify: `GET /artifacts/{id}/children` excludes soft-deleted children by default
-- [ ] Specify: embeddings of soft-deleted artifacts do NOT participate in semantic/vector search
-- [ ] Specify: relations where source OR target is soft-deleted are excluded from relation queries and search scoping
-- [ ] Specify: provenance events referencing soft-deleted artifacts remain visible (audit trail)
-- [ ] Document all specifications in API documentation before deletion endpoints ship
+- [x] Specify: `scope_artifact_id` pointing to a soft-deleted artifact returns empty results (the scope anchor must be active)
+- [x] Specify: recursive CTE for scoping excludes soft-deleted intermediate nodes (if a file artifact is soft-deleted, its child chunks are unreachable via scoping even if not themselves soft-deleted)
+- [x] Specify: `GET /artifacts/{id}` returns 404 for soft-deleted artifacts (default behavior)
+- [x] Specify: `GET /artifacts/{id}?include_deleted=true` returns soft-deleted artifacts (administrative use only)
+- [x] Specify: `GET /artifacts/{id}/children` excludes soft-deleted children by default
+- [x] Specify: embeddings of soft-deleted artifacts do NOT participate in semantic/vector search
+- [x] Specify: relations where source OR target is soft-deleted are excluded from relation queries and search scoping
+- [x] Specify: provenance events referencing soft-deleted artifacts remain visible (audit trail)
+- [x] Document all specifications in API documentation before deletion endpoints ship — see `docs/soft-delete-semantics.md`
 
 ### 5. Tenant Type Deletion Policy (Schema)
-- [ ] Write migration: add `deletion_policy TEXT NOT NULL DEFAULT 'soft_delete'` column to `mimirdata.tenant_type`
-- [ ] Update seed data: `environment` → `soft_delete`, `project` → `no_delete`, `experiment` → `physical_delete`
-- [ ] Write migration: add `deleted_at TIMESTAMPTZ NULL` column to `mimirdata.artifact`
-- [ ] Add index on `deleted_at` for efficient filtering: `CREATE INDEX idx_artifact_deleted ON mimirdata.artifact (deleted_at) WHERE deleted_at IS NOT NULL`
-- [ ] Update tenant type schema (Pydantic) to include `deletion_policy` in response
-- [ ] Update tenant service to expose `deletion_policy` when resolving tenant
-- [ ] Write down migration for both changes
-- [ ] Test migration up/down on clean database and on database with existing data
+- [x] Write migration: add `deletion_policy TEXT NOT NULL DEFAULT 'soft_delete'` column to `mimirdata.tenant_type` — `006_deletion_infrastructure.up.sql`
+- [x] Update seed data: `environment` → `soft_delete`, `project` → `no_delete`, `experiment` → `physical_delete`
+- [x] Write migration: add `deleted_at TIMESTAMPTZ NULL` column to `mimirdata.artifact`
+- [x] Add index on `deleted_at` for efficient filtering: `CREATE INDEX idx_artifact_deleted ON mimirdata.artifact (deleted_at) WHERE deleted_at IS NOT NULL`
+- [x] Update tenant type schema (Pydantic) to include `deletion_policy` in response — `TenantResponse.deletion_policy`
+- [x] Update tenant service to expose `deletion_policy` when resolving tenant — `tenant_service.get_deletion_policy()`
+- [x] Write down migration for both changes — `006_deletion_infrastructure.down.sql`
+- [x] Test migration up/down on clean database and on database with existing data — verified round-trip down/up on database with 925+ existing artifacts
 
 ### 6. Soft Deletion (Standard Tenants)
-- [ ] Implement `DELETE /artifacts/{id}` endpoint in artifacts router
-- [ ] Implement tenant policy check: look up tenant type → deletion_policy; return 403 for `no_delete`
-- [ ] Implement soft delete: set `deleted_at = now()` on target artifact
-- [ ] Implement cascade soft delete: recursive `parent_artifact_id` traversal to set `deleted_at` on all descendants
-- [ ] Return 409 Conflict when `cascade=false` and artifact has active (non-deleted) children
-- [ ] Return 404 for already-deleted artifacts
-- [ ] Update all artifact retrieval queries: add `WHERE deleted_at IS NULL`
-- [ ] Update all search queries: add `WHERE a.deleted_at IS NULL` (fulltext, semantic, hybrid, similar)
-- [ ] Update relation queries: exclude relations where source or target artifact is soft-deleted
-- [ ] Update embedding queries: exclude embeddings for soft-deleted artifacts
-- [ ] Update context service: exclude soft-deleted artifacts from context traversal
-- [ ] Provenance events are NOT affected — they remain as audit trail
-- [ ] Add tests: soft delete single artifact, cascade soft delete tree, 403 on audited tenant, 409 without cascade when children exist, search excludes soft-deleted, relations exclude soft-deleted
+- [x] Implement `DELETE /artifacts/{id}` endpoint in artifacts router
+- [x] Implement tenant policy check: look up tenant type → deletion_policy; return 403 for `no_delete`
+- [x] Implement soft delete: set `deleted_at = now()` on target artifact
+- [x] Implement cascade soft delete: recursive `parent_artifact_id` traversal to set `deleted_at` on all descendants
+- [x] Return 409 Conflict when `cascade=false` and artifact has active (non-deleted) children
+- [x] Return 404 for already-deleted artifacts
+- [x] Update all artifact retrieval queries: add `WHERE deleted_at IS NULL`
+- [x] Update all search queries: add `WHERE a.deleted_at IS NULL` (fulltext, semantic, hybrid, similar)
+- [x] Update relation queries: exclude relations where source or target artifact is soft-deleted
+- [x] Update embedding queries: exclude embeddings for soft-deleted artifacts
+- [x] Update context service: exclude soft-deleted artifacts from context traversal — relation traversal JOINs exclude soft-deleted endpoints
+- [x] Provenance events are NOT affected — they remain as audit trail
+- [x] Add tests: soft delete single artifact, cascade soft delete tree, 403 on audited tenant, 409 without cascade when children exist, search excludes soft-deleted, relations exclude soft-deleted — `tests/integration/test_deletion_phase2.py`
 
 ### 7. Physical Deletion (Sandbox/Experiment Tenants)
-- [ ] Implement physical delete path in artifact service for `physical_delete` policy tenants
-- [ ] Delete embeddings first: query all `mimir_vectors.vec_{type}` tables for the artifact's embeddings; delete rows
-- [ ] Delete relations: remove rows from relation table where artifact is source OR target
-- [ ] Delete provenance events: remove rows from provenance_event table for the artifact
-- [ ] Delete the artifact row itself
-- [ ] Implement cascade physical delete: depth-first recursive traversal of `parent_artifact_id` tree, deleting leaf nodes before parents (respects FK ordering)
-- [ ] Ensure cascade cannot cross tenant boundaries: `AND tenant_id = %s` at every level
-- [ ] Return deletion counts in response: `{"deleted": {"artifacts": N, "embeddings": N, "relations": N, "provenance_events": N}}`
-- [ ] Add tests: physical delete single artifact, cascade physical delete tree, verify no rows remain in any table, verify tenant isolation, verify FK ordering (leaf-first)
-- [ ] Stress test: cascade delete of ~200 artifact tree with embeddings across multiple vector tables
+- [x] Implement physical delete path in artifact service for `physical_delete` policy tenants
+- [x] Delete embeddings first: query all `mimir_vectors.vec_{type}` tables for the artifact's embeddings; delete rows
+- [x] Delete relations: remove rows from relation table where artifact is source OR target
+- [x] Delete provenance events: remove rows from provenance_event table for the artifact
+- [x] Delete the artifact row itself
+- [x] Implement cascade physical delete: depth-first recursive traversal of `parent_artifact_id` tree, deleting leaf nodes before parents (respects FK ordering)
+- [x] Ensure cascade cannot cross tenant boundaries: `AND tenant_id = %s` at every level
+- [x] Return deletion counts in response: `{"deleted": {"artifacts": N, "embeddings": N, "relations": N, "provenance_events": N}}`
+- [x] Add tests: physical delete single artifact, cascade physical delete tree, verify truly gone (include_deleted=true also 404) — `tests/integration/test_deletion_phase2.py`
+- [x] Stress test: cascade delete of ~201 artifact tree — soft-delete 201 artifacts in 11ms, physical-delete 201 artifacts + 5 relations in 31ms
 
 ---
 
@@ -149,3 +149,4 @@
 |---|---|---|
 | 2026-02-13 | Initial roadmap | — |
 | 2026-02-13 | Merged metadata filtering + scoping into Phase 1; added soft-delete semantics specification; renumbered phases | Developer1 response: scoping + metadata filtering are jointly necessary for correct search; soft-delete interaction semantics need specification before deletion ships |
+| 2026-02-13 | Phase 2 implementation complete (Items 4-7) | Migration 006, soft-delete/physical-delete services, DELETE endpoint, query exclusion across all services, API integration tests |

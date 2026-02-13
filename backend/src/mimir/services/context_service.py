@@ -268,35 +268,37 @@ async def _get_relations_for_traversal(
         queries = []
         
         if "outgoing" in directions:
-            # Artifact is source, follow to target
-            where = "source_id = %s AND tenant_id = %s"
+            # Artifact is source, follow to target (exclude soft-deleted targets)
+            where = "r.source_id = %s AND r.tenant_id = %s"
             params: list = [str(artifact_id), tenant_id]
             if relation_types:
-                where += " AND relation_type = ANY(%s)"
+                where += " AND r.relation_type = ANY(%s)"
                 params.append(relation_types)
             
             queries.append((
                 f"""
-                SELECT relation_type, target_id, 'outgoing' as direction
-                FROM {SCHEMA_NAME}.relation
-                WHERE {where}
+                SELECT r.relation_type, r.target_id, 'outgoing' as direction
+                FROM {SCHEMA_NAME}.relation r
+                JOIN {SCHEMA_NAME}.artifact a ON a.id = r.target_id
+                WHERE {where} AND a.deleted_at IS NULL
                 """,
                 params,
             ))
         
         if "incoming" in directions:
-            # Artifact is target, follow back to source
-            where = "target_id = %s AND tenant_id = %s"
+            # Artifact is target, follow back to source (exclude soft-deleted sources)
+            where = "r.target_id = %s AND r.tenant_id = %s"
             params = [str(artifact_id), tenant_id]
             if relation_types:
-                where += " AND relation_type = ANY(%s)"
+                where += " AND r.relation_type = ANY(%s)"
                 params.append(relation_types)
             
             queries.append((
                 f"""
-                SELECT relation_type, source_id, 'incoming' as direction
-                FROM {SCHEMA_NAME}.relation
-                WHERE {where}
+                SELECT r.relation_type, r.source_id, 'incoming' as direction
+                FROM {SCHEMA_NAME}.relation r
+                JOIN {SCHEMA_NAME}.artifact a ON a.id = r.source_id
+                WHERE {where} AND a.deleted_at IS NULL
                 """,
                 params,
             ))
@@ -437,4 +439,5 @@ def _strip_content(artifact: ArtifactResponse) -> ArtifactResponse:
         external_id=artifact.external_id,
         metadata=artifact.metadata,
         created_at=artifact.created_at,
+        deleted_at=getattr(artifact, 'deleted_at', None),
     )

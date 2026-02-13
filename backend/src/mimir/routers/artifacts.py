@@ -1,9 +1,14 @@
-"""Artifact API endpoints (V2 append-only).
+"""Artifact API endpoints (V2.2 with deletion).
+
+V2.2 Changes (Phase 2):
+- DELETE /artifacts/{id} endpoint with policy-based dispatch
+- Soft-delete for environment tenants, physical-delete for experiment tenants
+- 403 Forbidden for audited (project) tenants
+- include_deleted query parameter for administrative access
 
 V2 Changes:
 - UUID path parameters (not INT)
 - No PATCH/UPDATE endpoint (append-only)
-- No DELETE endpoint (append-only)
 - No version endpoints (each artifact is its own identity)
 - 409 Conflict on duplicate UUID
 - Batch retrieval via `ids` query parameter
@@ -17,8 +22,10 @@ from mimir.schemas.artifact import (
     ArtifactCreate,
     ArtifactListResponse,
     ArtifactResponse,
+    PhysicalDeleteResponse,
+    SoftDeleteResponse,
 )
-from mimir.services import artifact_service
+from mimir.services import artifact_service, tenant_service
 
 router = APIRouter(prefix="/artifacts", tags=["artifacts"])
 
@@ -115,9 +122,14 @@ async def list_artifacts(
 async def get_artifact(
     artifact_id: UUID,
     x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
+    include_deleted: bool = Query(False, description="Include soft-deleted artifacts (admin)"),
 ) -> ArtifactResponse:
-    """Get artifact by UUID."""
-    result = await artifact_service.get_artifact(artifact_id, x_tenant_id)
+    """Get artifact by UUID.
+
+    By default, soft-deleted artifacts return 404.
+    Use `include_deleted=true` for administrative access.
+    """
+    result = await artifact_service.get_artifact(artifact_id, x_tenant_id, include_deleted)
     if not result:
         raise HTTPException(status_code=404, detail="Artifact not found")
     return result
@@ -127,12 +139,75 @@ async def get_artifact(
 async def get_artifact_children(
     artifact_id: UUID,
     x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
+    include_deleted: bool = Query(False, description="Include soft-deleted children (admin)"),
 ) -> list[ArtifactResponse]:
-    """Get child artifacts (for positional types like chunks, quotes)."""
-    return await artifact_service.get_children(artifact_id, x_tenant_id)
+    """Get child artifacts (for positional types like chunks, quotes).
+
+    By default excludes soft-deleted children.
+    """
+    return await artifact_service.get_children(artifact_id, x_tenant_id, include_deleted)
+
+
+@router.delete(
+    "/{artifact_id}",
+    response_model=SoftDeleteResponse | PhysicalDeleteResponse,
+    responses={
+        403: {"description": "Deletion not permitted for this tenant type (no_delete policy)"},
+        404: {"description": "Artifact not found or already deleted"},
+        409: {"description": "Artifact has active children and cascade=false"},
+    },
+)
+async def delete_artifact(
+    artifact_id: UUID,
+    x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
+    cascade: bool = Query(True, description="Cascade delete to all descendants"),
+) -> SoftDeleteResponse | PhysicalDeleteResponse:
+    """Delete an artifact according to the tenant's deletion policy.
+
+    - **soft_delete** (environment tenants): Sets deleted_at timestamp. Artifact
+      remains in database but is excluded from all queries.
+    - **physical_delete** (experiment tenants): Permanently removes artifact and
+      all associated data (embeddings, relations, provenance).
+    - **no_delete** (project tenants): Returns 403 Forbidden.
+
+    When `cascade=true` (default), all descendant artifacts via parent_artifact_id
+    are also deleted. When `cascade=false`, returns 409 if the artifact has active children.
+    """
+    # Look up tenant's deletion policy
+    policy = await tenant_service.get_deletion_policy(x_tenant_id)
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    if policy == "no_delete":
+        raise HTTPException(
+            status_code=403,
+            detail="Deletion not permitted: this tenant type enforces append-only (no_delete policy)",
+        )
+
+    try:
+        if policy == "physical_delete":
+            result = await artifact_service.physical_delete_artifact(
+                artifact_id, x_tenant_id, cascade
+            )
+        else:
+            # Default to soft_delete
+            result = await artifact_service.soft_delete_artifact(
+                artifact_id, x_tenant_id, cascade
+            )
+    except ValueError as e:
+        if str(e) == "has_children":
+            raise HTTPException(
+                status_code=409,
+                detail="Artifact has active children. Use cascade=true or delete children first.",
+            )
+        raise
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Artifact not found or already deleted")
+
+    return result
 
 
 # NOTE: PATCH/UPDATE endpoint removed - artifacts are append-only
-# NOTE: DELETE endpoint removed - artifacts are append-only
 # NOTE: Version endpoints removed - each artifact is its own identity
 #       Use supersedes relation for versioning (editorial intent)

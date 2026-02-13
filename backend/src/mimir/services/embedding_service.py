@@ -1,4 +1,8 @@
-"""Embedding service - database operations for embeddings (V2.1 multi-table architecture).
+"""Embedding service - database operations for embeddings (V2.2 multi-table architecture).
+
+V2.2 Changes (Phase 2):
+- Listing and retrieval queries join artifact to exclude embeddings
+  for soft-deleted artifacts (deleted_at IS NOT NULL)
 
 V2.1 Changes:
 - Uses embedding_type FK instead of free-form model string
@@ -114,13 +118,14 @@ async def create_embedding(tenant_id: int, data: EmbeddingCreate) -> EmbeddingRe
 async def get_embedding(
     embedding_id: UUID, tenant_id: int, include_vector: bool = False
 ) -> EmbeddingResponse | EmbeddingWithVectorResponse | None:
-    """Get embedding by UUID."""
+    """Get embedding by UUID. Excludes embeddings for soft-deleted artifacts."""
     async with get_connection() as conn:
         result = await conn.execute(
             f"""
-            SELECT id, tenant_id, artifact_id, embedding_type, metadata, created_at
-            FROM {SCHEMA_NAME}.embedding
-            WHERE id = %s AND tenant_id = %s
+            SELECT e.id, e.tenant_id, e.artifact_id, e.embedding_type, e.metadata, e.created_at
+            FROM {SCHEMA_NAME}.embedding e
+            JOIN {SCHEMA_NAME}.artifact a ON a.id = e.artifact_id
+            WHERE e.id = %s AND e.tenant_id = %s AND a.deleted_at IS NULL
             """,
             (str(embedding_id), tenant_id),
         )
@@ -160,21 +165,26 @@ async def list_embeddings(
     artifact_id: UUID | None = None,
     embedding_type: str | None = None,
 ) -> EmbeddingListResponse:
-    """List embeddings with optional filtering."""
+    """List embeddings with optional filtering. Excludes embeddings for soft-deleted artifacts."""
     async with get_connection() as conn:
-        where_clause = "WHERE tenant_id = %s"
+        where_clause = "WHERE e.tenant_id = %s AND a.deleted_at IS NULL"
         params: list = [tenant_id]
 
         if artifact_id:
-            where_clause += " AND artifact_id = %s"
+            where_clause += " AND e.artifact_id = %s"
             params.append(str(artifact_id))
         if embedding_type:
-            where_clause += " AND embedding_type = %s"
+            where_clause += " AND e.embedding_type = %s"
             params.append(embedding_type)
+
+        join_clause = f"""
+            FROM {SCHEMA_NAME}.embedding e
+            JOIN {SCHEMA_NAME}.artifact a ON a.id = e.artifact_id
+        """
 
         # Get count
         count_result = await conn.execute(
-            f"SELECT COUNT(*) FROM {SCHEMA_NAME}.embedding {where_clause}",
+            f"SELECT COUNT(*) {join_clause} {where_clause}",
             params,
         )
         total = (await count_result.fetchone())[0]
@@ -182,10 +192,10 @@ async def list_embeddings(
         # Get embeddings
         result = await conn.execute(
             f"""
-            SELECT id, tenant_id, artifact_id, embedding_type, metadata, created_at
-            FROM {SCHEMA_NAME}.embedding
+            SELECT e.id, e.tenant_id, e.artifact_id, e.embedding_type, e.metadata, e.created_at
+            {join_clause}
             {where_clause}
-            ORDER BY created_at DESC
+            ORDER BY e.created_at DESC
             LIMIT %s OFFSET %s
             """,
             params + [limit, offset],
@@ -202,21 +212,22 @@ async def get_artifact_embeddings(
     artifact_id: UUID,
     embedding_type: str | None = None,
 ) -> list[EmbeddingResponse]:
-    """Get all embeddings for an artifact."""
+    """Get all embeddings for an artifact. Excludes if artifact is soft-deleted."""
     async with get_connection() as conn:
-        where_clause = "WHERE tenant_id = %s AND artifact_id = %s"
+        where_clause = "WHERE e.tenant_id = %s AND e.artifact_id = %s AND a.deleted_at IS NULL"
         params: list = [tenant_id, str(artifact_id)]
 
         if embedding_type:
-            where_clause += " AND embedding_type = %s"
+            where_clause += " AND e.embedding_type = %s"
             params.append(embedding_type)
 
         result = await conn.execute(
             f"""
-            SELECT id, tenant_id, artifact_id, embedding_type, metadata, created_at
-            FROM {SCHEMA_NAME}.embedding
+            SELECT e.id, e.tenant_id, e.artifact_id, e.embedding_type, e.metadata, e.created_at
+            FROM {SCHEMA_NAME}.embedding e
+            JOIN {SCHEMA_NAME}.artifact a ON a.id = e.artifact_id
             {where_clause}
-            ORDER BY created_at DESC
+            ORDER BY e.created_at DESC
             """,
             params,
         )
@@ -251,10 +262,10 @@ async def find_similar(
         where_clause = "WHERE e.tenant_id = %s"
         params: list = [tenant_id]
 
-        # Join with artifact to filter by type
-        join_clause = ""
+        # Always join with artifact to exclude soft-deleted
+        join_clause = f"JOIN {SCHEMA_NAME}.artifact a ON e.artifact_id = a.id"
+        where_clause += " AND a.deleted_at IS NULL"
         if artifact_types:
-            join_clause = f"JOIN {SCHEMA_NAME}.artifact a ON e.artifact_id = a.id"
             where_clause += " AND a.artifact_type = ANY(%s)"
             params.append(artifact_types)
 

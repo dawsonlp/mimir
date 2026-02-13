@@ -3,7 +3,7 @@
 
 services:
   postgres:
-    image: dawsonlp/mimir-postgres:v1.0
+    image: dawsonlp/mimir-postgres:v2.3.0
     ports:
       - "35432:5432"  # Host:Container - avoid common port conflicts
     volumes:
@@ -24,7 +24,7 @@ services:
     restart: unless-stopped
 
   migrate:
-    image: dawsonlp/mimir-api:v1.0
+    image: dawsonlp/mimir-api:v2.3.0
     environment:
       DATABASE_URL: postgresql://mimir:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/mimir
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -35,7 +35,7 @@ services:
     restart: "no"
 
   api:
-    image: dawsonlp/mimir-api:v1.0
+    image: dawsonlp/mimir-api:v2.3.0
     ports:
       - "38000:8000"  # Host:Container - avoid common port conflicts
     environment:
