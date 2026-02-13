@@ -75,3 +75,6 @@ uv.lock
 
 # Data directory (user data, exports, etc.)
 data/
+
+# Communications (inter-team correspondence, not part of codebase)
+comms/
