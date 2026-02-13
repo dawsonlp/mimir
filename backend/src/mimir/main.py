@@ -2,9 +2,11 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from mimir.config import settings
 from mimir.database import close_pool, init_pool
@@ -172,6 +174,16 @@ app.include_router(embedding_types.router)
 app.include_router(embeddings.router)
 app.include_router(search.router)
 app.include_router(provenance.router)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Return structured JSON for unhandled exceptions instead of plain text 500."""
+    logging.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "code": "INTERNAL_ERROR"},
+    )
 
 
 @app.get("/health")

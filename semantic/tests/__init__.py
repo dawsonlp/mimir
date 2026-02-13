@@ -1,0 +1,1 @@
+"""Tests for mimir_semantic package."""
