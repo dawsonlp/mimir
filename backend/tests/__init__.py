@@ -1,1 +1,1 @@
-# Mímir V2 Test Suite
+# Mímir V3 Test Suite

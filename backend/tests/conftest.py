@@ -1,5 +1,5 @@
 """
-Mímir V2 Test Configuration
+Mímir V3 Test Configuration
 
 Pytest fixtures for unit and integration testing.
 Uses testcontainers for PostgreSQL with pgvector in integration tests.

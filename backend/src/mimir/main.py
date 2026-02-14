@@ -1,4 +1,4 @@
-"""Mímir V2 - FastAPI application."""
+"""Mímir V3 - FastAPI application."""
 
 from contextlib import asynccontextmanager
 
@@ -28,7 +28,7 @@ from mimir.services import embedding_providers  # noqa: F401
 
 # OpenAPI description with entity overview
 API_DESCRIPTION = """
-# Mímir V2 - Knowledge Graph & Semantic Memory API
+# Mímir V3 - Knowledge Graph & Semantic Memory API
 
 Mímir stores and retrieves knowledge using a unified artifact model with semantic search.
 
@@ -145,9 +145,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Mímir V2",
+    title="Mímir V3",
     description=API_DESCRIPTION,
-    version="2.3.0",
+    version="3.0.0",
     lifespan=lifespan,
     openapi_tags=TAGS_METADATA,
     docs_url="/docs",
@@ -189,7 +189,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "version": "2.3.0"}
+    return {"status": "healthy", "version": "3.0.0"}
 
 
 # HTML landing page template
@@ -199,7 +199,7 @@ LANDING_PAGE_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mímir V2 - Knowledge Graph API</title>
+    <title>Mímir V3 - Knowledge Graph API</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -312,8 +312,8 @@ LANDING_PAGE_HTML = """
 <body>
     <div class="header">
         <div class="logo">🧠</div>
-        <h1>Mímir V2</h1>
-        <span class="version">v2.3.0</span>
+        <h1>Mímir V3</h1>
+        <span class="version">v3.0.0</span>
         <p class="tagline">Knowledge Graph &amp; Semantic Memory API</p>
     </div>
     

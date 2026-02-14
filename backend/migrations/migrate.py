@@ -1,5 +1,5 @@
 """
-Plain SQL migration runner for Mímir V2.
+Plain SQL migration runner for Mímir V3.
 
 Usage:
     python -m migrations.migrate up      # Apply all pending migrations

@@ -1,4 +1,4 @@
-"""Services for Mímir V2 API."""
+"""Services for Mímir V3 API."""
 
 from mimir.services import (
     artifact_service,

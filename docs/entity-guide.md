@@ -1,4 +1,4 @@
-# Mímir V2 Entity Guide
+# Mímir V3 Entity Guide
 
 This guide explains each entity in the Mímir data model, their relationships, and effective usage patterns.
 

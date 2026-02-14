@@ -1,4 +1,4 @@
-"""Embedding providers for Mímir V2."""
+"""Embedding providers for Mímir V3."""
 
 from mimir.services.embedding_providers.base import (
     EmbeddingModelInfo,

@@ -1,6 +1,6 @@
 """Pydantic schemas for Artifact entity - the universal knowledge unit.
 
-Artifact is the core entity in Mímir V2. ALL knowledge is stored as artifacts
+Artifact is the core entity in Mímir V3. ALL knowledge is stored as artifacts
 with type discrimination via artifact_type.
 
 V2 Changes:

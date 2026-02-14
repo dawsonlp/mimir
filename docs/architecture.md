@@ -1,4 +1,4 @@
-# Mímir V2 Architecture
+# Mímir V3 Architecture
 
 ## Overview
 

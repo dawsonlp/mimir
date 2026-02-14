@@ -97,17 +97,21 @@
 ## Phase 3: Search Unification (High risk — breaking API change, complex validation, deprecation management)
 
 ### 8. Unified Search Endpoint (`POST /search`)
-- [ ] Design unified search request schema with discriminated ranking strategy
-- [ ] Define validation rules: which parameter combinations map to which strategy (see evaluation doc table)
-- [ ] Define error cases: ambiguous combinations (`query_vector` + `similar_to`), missing ranking input, missing `embedding_type` when required
-- [ ] Implement strategy inference logic with clear error messages ("Your request was interpreted as semantic search because you provided `query_vector`; `embedding_type` is required for this strategy")
-- [ ] Implement `POST /search` router, delegating to existing service functions based on inferred strategy
-- [ ] Include all Phase 1-3 features in unified schema: `metadata_filters`, `scope_artifact_id`, `offset`, `artifact_types`
-- [ ] Add deprecation headers to existing four search endpoints
-- [ ] Add tests: each ranking strategy via unified endpoint, validation error cases, all filter combinations work uniformly
-- [ ] Update OpenAPI documentation
-- [ ] Communicate deprecation timeline to consumers
-- [ ] Monitor usage of deprecated endpoints; remove in future major version after migration confirmed
+- [x] Design unified search request schema with discriminated ranking strategy — `UnifiedSearchRequest` in `schemas/search.py`, `SearchStrategy` enum
+- [x] Define validation rules: which parameter combinations map to which strategy (see evaluation doc table) — 8-row inference table in `_infer_search_strategy()`
+- [x] Define error cases: ambiguous combinations (`query_vector` + `similar_to`), missing ranking input, missing `embedding_type` when required — `AMBIGUOUS_RANKING`, `RESERVED_COMBINATION`, `NO_RANKING_INPUT`, `MISSING_EMBEDDING_TYPE`
+- [x] Implement strategy inference logic with clear error messages ("Your request was interpreted as semantic search because you provided `query_vector`; `embedding_type` is required for this strategy") — pure function `_infer_search_strategy()` in `routers/search.py`
+- [x] Implement `POST /search` router, delegating to existing service functions based on inferred strategy — `unified_search()` with `_execute_fulltext/semantic/hybrid/similar()` delegation
+- [x] Include all Phase 1-3 features in unified schema: `metadata_filters`, `scope_artifact_id`, `offset`, `artifact_types` — all fields present in `UnifiedSearchRequest`
+- [x] Add deprecation headers to existing four search endpoints — `Deprecation: true`, `Sunset: 2026-08-01`, `Link: </search>; rel="successor-version"`
+- [x] Add tests: each ranking strategy via unified endpoint, validation error cases, all filter combinations work uniformly — 27 unit tests (pure inference + schema), integration tests for HTTP-level validation and deprecation headers
+- [x] Update OpenAPI documentation — API version bumped to v3.0.0, legacy endpoints marked `deprecated=True`
+- [x] Remove legacy endpoints: `POST /search/semantic`, `POST /search/hybrid`, `GET /search/similar/{id}` — removed from router, dead schemas deleted
+- [x] Retain `GET /search/fulltext` as deprecated GET convenience — deprecation headers present
+- [x] Migrate Phase 1 unit tests from legacy schemas to `UnifiedSearchRequest`
+- [x] Remove dead `SemanticSearchRequest` and `HybridSearchRequest` schema classes
+- [x] Clean up `schemas/__init__.py` exports
+- [x] Communicate deprecation timeline to consumers (fulltext GET endpoint) — see `comms/06_v3_migration_guide.md`
 
 ---
 
@@ -150,3 +154,6 @@
 | 2026-02-13 | Initial roadmap | — |
 | 2026-02-13 | Merged metadata filtering + scoping into Phase 1; added soft-delete semantics specification; renumbered phases | Developer1 response: scoping + metadata filtering are jointly necessary for correct search; soft-delete interaction semantics need specification before deletion ships |
 | 2026-02-13 | Phase 2 implementation complete (Items 4-7) | Migration 006, soft-delete/physical-delete services, DELETE endpoint, query exclusion across all services, API integration tests |
+| 2026-02-13 | Phase 3 implementation complete (Item 8, coding) | `POST /search` unified endpoint, `SearchStrategy` enum, `UnifiedSearchRequest` schema, strategy inference, deprecation headers on legacy endpoints, v3.0.0 |
+| 2026-02-13 | Phase 3 endpoint removal | Removed `POST /search/semantic`, `POST /search/hybrid`, `GET /search/similar/{id}`. Deleted `SemanticSearchRequest`, `HybridSearchRequest`. Retained `GET /search/fulltext` (deprecated). |
+| 2026-02-13 | Phase 3 complete | Consumer migration guide published (`comms/06_v3_migration_guide.md`). All Phase 3 items done. |

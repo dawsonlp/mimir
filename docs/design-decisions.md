@@ -1,8 +1,8 @@
-# Mímir V2 Design Decisions
+# Mímir V3 Design Decisions
 
 ## Overview
 
-This document captures the key architectural decisions made in Mímir V2, focusing on the transition to UUIDs and append-only data patterns.
+This document captures the key architectural decisions made in Mímir V3, focusing on the transition to UUIDs and append-only data patterns.
 
 ---
 

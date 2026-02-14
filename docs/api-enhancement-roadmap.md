@@ -1,11 +1,11 @@
-# Mímir V2 API Enhancement Roadmap
+# Mímir V3 API Enhancement Roadmap
 
 ## Overview
 
 This document specifies prioritized API enhancements to support RAG (Retrieval Augmented Generation) workloads. Each enhancement is described in terms of requirements, behavior, and architectural considerations.
 
 **Target Audience**: Senior engineers implementing these changes  
-**Prerequisite**: Familiarity with Mímir V2 architecture documentation
+**Prerequisite**: Familiarity with Mímir V3 architecture documentation
 
 ---
 

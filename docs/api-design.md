@@ -1,4 +1,4 @@
-# Mímir V2 API Design
+# Mímir V3 API Design
 
 ## Base URL
 

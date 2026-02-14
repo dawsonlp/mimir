@@ -17,9 +17,8 @@ from uuid import UUID, uuid4
 
 from mimir.schemas.artifact import ArtifactResponse
 from mimir.schemas.search import (
-    HybridSearchRequest,
     SearchResult,
-    SemanticSearchRequest,
+    UnifiedSearchRequest,
 )
 from mimir.services.search_service import (
     _build_metadata_filter,
@@ -76,19 +75,19 @@ def _make_search_result(
 
 
 class TestPaginationSchemas:
-    """Test that offset is properly accepted in request schemas."""
+    """Test that offset is properly accepted in UnifiedSearchRequest."""
 
     def test_semantic_search_request_default_offset(self):
-        """SemanticSearchRequest should default offset to 0."""
-        req = SemanticSearchRequest(
+        """UnifiedSearchRequest (semantic params) should default offset to 0."""
+        req = UnifiedSearchRequest(
             query_vector=[0.1, 0.2, 0.3],
             embedding_type="nomic-embed-text",
         )
         assert req.offset == 0
 
     def test_semantic_search_request_custom_offset(self):
-        """SemanticSearchRequest should accept custom offset."""
-        req = SemanticSearchRequest(
+        """UnifiedSearchRequest (semantic params) should accept custom offset."""
+        req = UnifiedSearchRequest(
             query_vector=[0.1, 0.2, 0.3],
             embedding_type="nomic-embed-text",
             offset=50,
@@ -96,17 +95,17 @@ class TestPaginationSchemas:
         assert req.offset == 50
 
     def test_semantic_search_request_negative_offset_rejected(self):
-        """SemanticSearchRequest should reject negative offset."""
+        """UnifiedSearchRequest should reject negative offset."""
         with pytest.raises(Exception):  # ValidationError
-            SemanticSearchRequest(
+            UnifiedSearchRequest(
                 query_vector=[0.1, 0.2, 0.3],
                 embedding_type="nomic-embed-text",
                 offset=-1,
             )
 
     def test_hybrid_search_request_default_offset(self):
-        """HybridSearchRequest should default offset to 0."""
-        req = HybridSearchRequest(
+        """UnifiedSearchRequest (hybrid params) should default offset to 0."""
+        req = UnifiedSearchRequest(
             query="test",
             query_vector=[0.1, 0.2, 0.3],
             embedding_type="nomic-embed-text",
@@ -114,8 +113,8 @@ class TestPaginationSchemas:
         assert req.offset == 0
 
     def test_hybrid_search_request_custom_offset(self):
-        """HybridSearchRequest should accept custom offset."""
-        req = HybridSearchRequest(
+        """UnifiedSearchRequest (hybrid params) should accept custom offset."""
+        req = UnifiedSearchRequest(
             query="test",
             query_vector=[0.1, 0.2, 0.3],
             embedding_type="nomic-embed-text",
@@ -124,9 +123,9 @@ class TestPaginationSchemas:
         assert req.offset == 25
 
     def test_hybrid_search_request_negative_offset_rejected(self):
-        """HybridSearchRequest should reject negative offset."""
+        """UnifiedSearchRequest should reject negative offset."""
         with pytest.raises(Exception):
-            HybridSearchRequest(
+            UnifiedSearchRequest(
                 query="test",
                 query_vector=[0.1, 0.2, 0.3],
                 embedding_type="nomic-embed-text",
@@ -364,11 +363,11 @@ class TestBuildScopeFilter:
 
 
 class TestMetadataFiltersSchema:
-    """Test metadata_filters field on request schemas."""
+    """Test metadata_filters field on UnifiedSearchRequest."""
 
     def test_semantic_request_accepts_metadata_filters(self):
-        """SemanticSearchRequest accepts metadata_filters dict."""
-        req = SemanticSearchRequest(
+        """UnifiedSearchRequest (semantic) accepts metadata_filters dict."""
+        req = UnifiedSearchRequest(
             query_vector=[0.1, 0.2],
             embedding_type="nomic-embed-text",
             metadata_filters={"language": "python"},
@@ -377,7 +376,7 @@ class TestMetadataFiltersSchema:
 
     def test_semantic_request_metadata_filters_default_none(self):
         """metadata_filters defaults to None."""
-        req = SemanticSearchRequest(
+        req = UnifiedSearchRequest(
             query_vector=[0.1, 0.2],
             embedding_type="nomic-embed-text",
         )
@@ -385,7 +384,7 @@ class TestMetadataFiltersSchema:
 
     def test_semantic_request_metadata_filters_array_values(self):
         """metadata_filters accepts array values for OR semantics."""
-        req = SemanticSearchRequest(
+        req = UnifiedSearchRequest(
             query_vector=[0.1, 0.2],
             embedding_type="nomic-embed-text",
             metadata_filters={"tags": ["api", "core"]},
@@ -393,8 +392,8 @@ class TestMetadataFiltersSchema:
         assert req.metadata_filters["tags"] == ["api", "core"]
 
     def test_hybrid_request_accepts_metadata_filters(self):
-        """HybridSearchRequest accepts metadata_filters dict."""
-        req = HybridSearchRequest(
+        """UnifiedSearchRequest (hybrid) accepts metadata_filters dict."""
+        req = UnifiedSearchRequest(
             query="test",
             query_vector=[0.1, 0.2],
             embedding_type="nomic-embed-text",
@@ -404,12 +403,12 @@ class TestMetadataFiltersSchema:
 
 
 class TestScopeArtifactIdSchema:
-    """Test scope_artifact_id field on request schemas."""
+    """Test scope_artifact_id field on UnifiedSearchRequest."""
 
     def test_semantic_request_accepts_scope_artifact_id(self):
-        """SemanticSearchRequest accepts scope_artifact_id UUID."""
+        """UnifiedSearchRequest (semantic) accepts scope_artifact_id UUID."""
         scope_id = uuid4()
-        req = SemanticSearchRequest(
+        req = UnifiedSearchRequest(
             query_vector=[0.1, 0.2],
             embedding_type="nomic-embed-text",
             scope_artifact_id=scope_id,
@@ -418,16 +417,16 @@ class TestScopeArtifactIdSchema:
 
     def test_semantic_request_scope_default_none(self):
         """scope_artifact_id defaults to None."""
-        req = SemanticSearchRequest(
+        req = UnifiedSearchRequest(
             query_vector=[0.1, 0.2],
             embedding_type="nomic-embed-text",
         )
         assert req.scope_artifact_id is None
 
     def test_hybrid_request_accepts_scope_artifact_id(self):
-        """HybridSearchRequest accepts scope_artifact_id UUID."""
+        """UnifiedSearchRequest (hybrid) accepts scope_artifact_id UUID."""
         scope_id = uuid4()
-        req = HybridSearchRequest(
+        req = UnifiedSearchRequest(
             query="test",
             query_vector=[0.1, 0.2],
             embedding_type="nomic-embed-text",

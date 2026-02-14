@@ -1,4 +1,4 @@
-"""Routers for Mímir V2 API."""
+"""Routers for Mímir V3 API."""
 
 from mimir.routers import (
     artifact_types,

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mimir"
-version = "2.0.0"
+version = "3.0.0"
 description = "Mímir - Durable Memory & Meta-Analysis Storage System"
 authors = ["Development Team"]
 readme = "README.md"

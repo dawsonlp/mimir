@@ -1,4 +1,4 @@
-"""Pydantic schemas for Mímir V2 API."""
+"""Pydantic schemas for Mímir V3 API."""
 
 from mimir.schemas.artifact import (
     ArtifactBase,
@@ -42,11 +42,11 @@ from mimir.schemas.relation_type import (
     RelationTypeUpdate,
 )
 from mimir.schemas.search import (
-    HybridSearchRequest,
     RelationDirection,
     SearchResponse,
     SearchResult,
-    SemanticSearchRequest,
+    SearchStrategy,
+    UnifiedSearchRequest,
 )
 from mimir.schemas.tenant import (
     TenantCreate,
@@ -92,8 +92,8 @@ __all__ = [
     "SimilaritySearchRequest",
     "SimilaritySearchResponse",
     # Search
-    "SemanticSearchRequest",
-    "HybridSearchRequest",
+    "UnifiedSearchRequest",
+    "SearchStrategy",
     "RelationDirection",
     "SearchResult",
     "SearchResponse",

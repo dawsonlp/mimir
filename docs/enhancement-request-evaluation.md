@@ -1,8 +1,16 @@
 # Design Document: Evaluation of Developer1 Enhancement Requests
 
+> **⚠️ ARCHIVED**: This document has been fully superseded by its downstream deliverables:
+> - [Enhancement Roadmap Checklist](enhancement-roadmap-checklist.md) — Actionable tracking (Phases 1–3 complete, Phase 4 pending)
+> - [Unified Search Technical Design](unified-search-technical-design.md) — Request #2 implementation
+> - [Soft-Delete Semantics](soft-delete-semantics.md) — Request #1 behavioral specification
+> - [Search Architecture](search-architecture.md) — Comprehensive search behavior reference
+>
+> Retained for historical context. Do not update — modify the downstream documents instead.
+
 **Author**: Mimir Architecture Team  
 **Date**: 2026-02-13  
-**Status**: Draft — For Review  
+**Status**: Archived — Superseded  
 **Audience**: Mimir maintainers, Developer1 team, future integration consumers
 
 ---

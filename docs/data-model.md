@@ -1,4 +1,4 @@
-# Mímir V2 Data Model
+# Mímir V3 Data Model
 
 ## Schema
 

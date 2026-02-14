@@ -1,4 +1,4 @@
-"""Configuration management for Mímir V2.
+"""Configuration management for Mímir V3.
 
 Uses pydantic-settings for environment variable loading with validation.
 All secrets are validated at startup to fail fast on misconfiguration.

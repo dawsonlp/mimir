@@ -1,4 +1,4 @@
-# Mímir V2 - Knowledge Graph & Semantic Memory API
+# Mímir V3 - Knowledge Graph & Semantic Memory API
 
 Unified artifact model knowledge graph API with semantic search capabilities.
 

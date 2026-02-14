@@ -1,4 +1,4 @@
-# Mímir V2 Migration Checklist
+# Mímir V3 Migration Checklist
 
 This document tracks the complete rebuild of Mímir with a unified artifact model.
 
