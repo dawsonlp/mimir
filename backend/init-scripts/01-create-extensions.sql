@@ -1,14 +1,10 @@
--- Mímir V2 - Initialize PostgreSQL extensions and schema
--- This script runs automatically on first database initialization
+-- Extensions needed by Mimir
+-- All extensions are pre-installed in dawsonlp/postgres-batteries-inc:18
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS age;
 
--- Create dedicated schema for Mímir data (keeps it isolated from public schema)
-CREATE SCHEMA IF NOT EXISTS mimirdata;
-
--- Set search path to include mimirdata schema
-ALTER DATABASE mimir SET search_path TO mimirdata, public;
-
--- pgvector: Vector similarity search for embeddings
-CREATE EXTENSION IF NOT EXISTS vector SCHEMA mimirdata;
-
--- pg_trgm: Trigram-based fuzzy text search (optional but useful)
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- AGE types (agtype, graphid) and operators (graphid_ops) live in ag_catalog.
+-- Add ag_catalog to the database search_path so these are resolvable in every
+-- session without an explicit SET search_path command.
+ALTER DATABASE mimir SET search_path = public, ag_catalog;

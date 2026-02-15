@@ -15,6 +15,24 @@ from mimir.config import get_settings
 _pool: AsyncConnectionPool | None = None
 
 
+async def _configure_connection(conn) -> None:
+    """Configure each new connection from the pool.
+
+    Apache AGE requires LOAD 'age' per session for its types (agtype) and
+    operators (graphid_ops) to be available. While session_preload_libraries
+    in postgresql.conf handles this at the DB level, this callback provides
+    defense-in-depth for the application layer.
+
+    Commits after executing so the connection is returned to the pool in
+    IDLE state (psycopg pool rejects connections left in INTRANS).
+    """
+    await conn.execute("LOAD 'age'")
+    await conn.execute(
+        "SET search_path = ag_catalog, mimirdata, public"
+    )
+    await conn.commit()
+
+
 async def init_pool() -> AsyncConnectionPool:
     """Initialize the async connection pool.
 
@@ -31,6 +49,7 @@ async def init_pool() -> AsyncConnectionPool:
         min_size=2,
         max_size=10,
         open=False,  # Don't open immediately; we'll open explicitly
+        configure=_configure_connection,
     )
     await _pool.open()
     return _pool
@@ -89,6 +108,13 @@ async def health_check() -> dict:
             pgvector_row = await cur.fetchone()
             pgvector_enabled = pgvector_row is not None
 
+            # Check AGE extension
+            await cur.execute(
+                "SELECT extname FROM pg_extension WHERE extname = 'age'"
+            )
+            age_row = await cur.fetchone()
+            age_enabled = age_row is not None
+
             # Get PostgreSQL version
             await cur.execute("SELECT version()")
             version_row = await cur.fetchone()
@@ -98,6 +124,7 @@ async def health_check() -> dict:
             "status": "healthy",
             "database": "connected",
             "pgvector": "enabled" if pgvector_enabled else "disabled",
+            "age": "enabled" if age_enabled else "disabled",
             "postgres_version": pg_version,
         }
     except Exception as e:

@@ -3,7 +3,12 @@
 
 services:
   postgres:
-    image: dawsonlp/mimir-postgres:v3.0.0
+    image: dawsonlp/postgres-batteries-inc:18
+    # AGE requires LOAD 'age' per session for types/operators to be available.
+    # session_preload_libraries ensures this happens automatically for every connection.
+    command: >
+      postgres
+      -c session_preload_libraries=age
     ports:
       - "35432:5432"  # Host:Container - avoid common port conflicts
     volumes:
