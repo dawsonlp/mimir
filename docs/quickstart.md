@@ -114,7 +114,46 @@ docker compose ps   # Should show "healthy"
 curl http://localhost:38000/health/ready
 ```
 
-## 7. Create First Artifact
+## 7. Register Embedding Types (Required for Semantic Search)
+
+Embedding types are **not seeded automatically** — they depend on which embedding
+models are available in your environment. You must register them before creating
+embeddings or using semantic/hybrid search.
+
+> **Important:** If you skip this step, embedding creation will fail with
+> `400: Embedding type 'xxx' not found or inactive`. This is by design — Mimir
+> validates that the embedding type exists before accepting any vectors.
+
+```bash
+# Register nomic-embed-text (Ollama, 768 dimensions)
+curl -X POST http://localhost:38000/embedding-types \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "nomic-embed-text",
+    "display_name": "Nomic Embed Text",
+    "provider": "ollama",
+    "dimensions": 768
+  }'
+```
+
+This creates the `embedding_type` registry entry **and** the underlying vector table
+with HNSW index. You only need to do this once per environment (survives restarts,
+but not `docker compose down -v`).
+
+**Common embedding types:**
+
+| Code | Provider | Dimensions | Registration |
+|------|----------|------------|--------------|
+| `nomic-embed-text` | Ollama | 768 | See above |
+| `text-embedding-3-small` | OpenAI | 1536 | Requires `OPENAI_API_KEY` |
+| `voyage-3` | Voyage AI | 1024 | Requires `VOYAGEAI_MIMIR_EMBEDDINGS` |
+
+Verify registered types:
+```bash
+curl http://localhost:38000/embedding-types
+```
+
+## 8. Create First Artifact
 
 ```bash
 curl -X POST http://localhost:38000/artifacts \

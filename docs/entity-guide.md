@@ -208,55 +208,85 @@ GET /api/v1/relations/artifact/101/incoming
 
 ---
 
-## 5. Embedding
+## 5. Embedding Type & Embedding
+
+### Embedding Type (Prerequisite)
+
+**Purpose:** Registry of embedding models. Each type creates a dedicated vector table with its own HNSW index.
+
+**Key Points:**
+- Must be registered **before** creating any embeddings
+- Each type has fixed dimensions (enforced at creation time)
+- Creates a `mimir_vectors.vec_{code}` table automatically
+- **Not seeded automatically** — depends on your environment's available models
+- Survives container restarts but **not** `docker compose down -v`
+
+> **Important for automated clients:** After a fresh infrastructure rebuild, the
+> `embedding_type` table is empty. You must register embedding types before
+> creating embeddings. Attempting to create an embedding with an unregistered type
+> returns `400: Embedding type 'xxx' not found or inactive`.
+
+**Usage:**
+```bash
+# Step 1: Check what's registered
+GET /embedding-types
+# Returns: {"items": [], "total": 0}  ← empty after rebuild
+
+# Step 2: Register your embedding model
+POST /embedding-types
+{
+  "code": "nomic-embed-text",
+  "display_name": "Nomic Embed Text",
+  "provider": "ollama",
+  "dimensions": 768
+}
+```
+
+**Common Embedding Types:**
+
+| Code | Provider | Dimensions |
+|------|----------|------------|
+| `nomic-embed-text` | Ollama | 768 |
+| `text-embedding-3-small` | OpenAI | 1536 |
+| `text-embedding-3-large` | OpenAI | 3072 |
+| `voyage-3` | Voyage AI | 1024 |
+
+### Embedding
 
 **Purpose:** Vector representation for semantic search. Enables "find similar" queries.
 
 **Key Points:**
-- One embedding per (entity, model, chunk_index) combination
-- Vector dimensions vary by model (768 to 3072)
-- HNSW index for fast approximate nearest neighbor
-- Chunk index supports multi-vector documents
-
-**Supported Models:**
-- OpenAI: `text-embedding-3-small` (1536d), `text-embedding-3-large` (3072d)
-- Ollama: `nomic-embed-text` (768d), `mxbai-embed-large` (1024d)
+- Requires a registered `embedding_type` (see above)
+- One embedding per (artifact, embedding_type) combination per tenant
+- Vector dimensions must match the embedding type's definition
+- Stored in per-type vector tables with HNSW indexes
+- Append-only (no delete operations)
 
 **Usage:**
 ```bash
-# Create embedding for an artifact
-POST /api/v1/embeddings
+# Create embedding for an artifact (embedding_type must be registered first)
+POST /embeddings
 {
-  "entity_type": "artifact",
-  "entity_id": 123,
-  "model": "text-embedding-3-small"
+  "artifact_id": "f5f14da8-...",
+  "embedding_type": "nomic-embed-text",
+  "embedding": [0.1, 0.2, ...]
 }
 
-# Find similar artifacts
-POST /api/v1/embeddings/similar
-{
-  "text": "database architecture decisions",
-  "model": "text-embedding-3-small",
-  "limit": 10
-}
-
-# Semantic search
-POST /api/v1/search/semantic
+# Unified search (semantic, hybrid, fulltext, similar — all in one endpoint)
+POST /search
 {
   "query": "PostgreSQL performance optimization",
-  "model": "text-embedding-3-small",
+  "query_vector": [0.1, 0.2, ...],
+  "embedding_type": "nomic-embed-text",
   "limit": 20
 }
-```
 
-**Chunking:** For long documents, create multiple embeddings:
-```bash
-POST /api/v1/embeddings
+# Find similar embeddings by vector
+POST /embeddings/similar
 {
-  "entity_type": "artifact",
-  "entity_id": 123,
-  "chunk_index": 0,
-  "chunk_text": "First 500 words..."
+  "query_vector": [0.1, 0.2, ...],
+  "embedding_type": "nomic-embed-text",
+  "limit": 10
 }
 ```
 
