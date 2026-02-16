@@ -59,7 +59,8 @@ def get_migration_files() -> list[tuple[int, str, Path, Path]]:
 
 
 async def ensure_migrations_table(conn: psycopg.AsyncConnection) -> None:
-    """Create schema_migrations table if it doesn't exist."""
+    """Create schema and schema_migrations table if they don't exist."""
+    await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
     await conn.execute(f"""
         CREATE TABLE IF NOT EXISTS {SCHEMA}.schema_migrations (
             version INT PRIMARY KEY,

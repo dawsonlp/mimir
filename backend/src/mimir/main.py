@@ -147,7 +147,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Mímir V3",
     description=API_DESCRIPTION,
-    version="3.0.0",
+    version="4.0.0",
     lifespan=lifespan,
     openapi_tags=TAGS_METADATA,
     docs_url="/docs",
@@ -189,7 +189,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "version": "3.0.0"}
+    return {"status": "healthy", "version": "4.0.0"}
 
 
 # HTML landing page template
@@ -313,7 +313,7 @@ LANDING_PAGE_HTML = """
     <div class="header">
         <div class="logo">🧠</div>
         <h1>Mímir V3</h1>
-        <span class="version">v3.0.0</span>
+        <span class="version">v4.0.0</span>
         <p class="tagline">Knowledge Graph &amp; Semantic Memory API</p>
     </div>
     

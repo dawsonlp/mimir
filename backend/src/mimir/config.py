@@ -90,6 +90,26 @@ class Settings(BaseSettings):
         description="Ollama server URL for local embeddings",
     )
 
+    # Graph engine settings
+    graph_max_depth: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum traversal depth for graph engine queries",
+    )
+    graph_max_result_set: int = Field(
+        default=500,
+        ge=1,
+        le=10000,
+        description="Maximum vertices returned from a single graph traversal",
+    )
+    graph_query_timeout_seconds: int = Field(
+        default=5,
+        ge=1,
+        le=60,
+        description="Per-query timeout for graph engine Cypher queries (seconds)",
+    )
+
     # CORS settings
     cors_origins: list[str] = Field(
         default=["*"],
