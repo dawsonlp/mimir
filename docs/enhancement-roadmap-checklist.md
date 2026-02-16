@@ -115,35 +115,93 @@
 
 ---
 
-## Phase 4: Advanced Graph (Highest risk — cycle detection, performance unpredictability, query complexity)
+## Phase 4: Graph Traversal Engine (v4.0.0) ✅
 
-### 9. General Graph Scoping with Depth Control
-- [ ] Design `depth` parameter for existing `related_to` search filter (values: integer or `"recursive"`)
-- [ ] Implement multi-hop relation traversal in search service with configurable depth
-- [ ] Implement cycle detection (visited set) to prevent infinite loops in symmetric/cyclic relations
-- [ ] Implement maximum depth limit (system-configured) to prevent runaway queries
-- [ ] Implement fan-out limit: cap the candidate set size from traversal to prevent memory exhaustion
-- [ ] Add query timeout for traversal to bound worst-case performance
-- [ ] Integrate traversal result set as WHERE clause in all search types
-- [ ] Consider materialized path or closure table if traversal performance is insufficient
-- [ ] Add tests: depth=1 (existing behavior), depth=2 multi-hop, recursive traversal, cycle detection, fan-out limits, timeout behavior
-- [ ] Performance test with realistic graph density
+> **Implementation**: Apache AGE 1.7.0 Cypher-based graph engine replacing Python BFS.
+> See `docs/graph-engine-technical-design.md`, `docs/graph-engine-agreed-approach.md`, `docs/graph-engine-development-checklist.md`.
+
+### 9. Graph Engine Foundation
+- [x] AGE Cypher spike — validated VLP queries, agtype parsing, AGE 1.7.0 capabilities (7/8 tests passed)
+- [x] agtype parser — pure-function parser for AGE's `agtype` return type (`::vertex`/`::edge` suffix stripping + JSON)
+- [x] Graph engine core (`graph_engine.py`) — `traverse()` and `find_paths()` using Cypher VLP queries
+- [x] Cypher builders — pure functions generating parameterized Cypher for outgoing/incoming/both directions
+- [x] Python-side relation type filtering (AGE 1.7.0 lacks `ALL()` predicate)
+- [x] Full relation path data in traversal results (D3 — stakeholder requirement for argument chain validation)
+
+### 10. Graph Scoping with Depth Control
+- [x] Design `GraphScope` schema with `root_artifact_id`, `max_depth`, `relation_types`, `direction`
+- [x] Implement configurable depth traversal via Cypher VLP `*1..N` range pattern
+- [x] Implement cycle prevention — AGE's VLP naturally avoids revisiting edges; Python deduplication by artifact_id
+- [x] Implement maximum depth ceiling — `MIMIR_GRAPH_MAX_DEPTH` (default 10, configurable)
+- [x] Implement fan-out limit — `MIMIR_GRAPH_MAX_RESULT_SET` (default 500) → `GraphScopeTooLargeError` (HTTP 422)
+- [x] Implement query timeout — `SET LOCAL statement_timeout` per query (D6) → `GraphQueryTimeoutError` (HTTP 504)
+- [x] Integrate traversal result set as post-filter on all search strategies (traverse-then-search pattern)
+- [x] `graph_scope` parameter on `POST /search` — mutually exclusive with `scope_artifact_id`
+- [x] `scope_artifact_id` backward compatibility — internally converts to `GraphScope(max_depth=1, direction="both")`
+
+### 11. Context Service Migration
+- [x] Replace Python BFS (N+1 SQL queries per hop) with single `graph_engine.traverse()` Cypher query
+- [x] Map policy configs (DIRECT_RELATIONS, DERIVED_LINEAGE, EVIDENCE_CHAIN, FULL_GRAPH) to traverse parameters
+- [x] Preserve `relation_path` and `distance` in ContextArtifact response
+
+### 12. Graph Engine Testing
+- [x] 48 unit tests: agtype parser (24), Cypher builders + path extraction + filtering (24)
+- [x] 14 integration tests: traversal with known 6-node graph topology
+- [x] 8 integration tests: graph-scoped search (fulltext, depth control, relation filtering, backward compat, validation)
+- [x] Error handling tests: `GraphScopeTooLargeError`, `GraphNotFoundError`, timeout enforcement
+
+---
+
+## Phase 5: Graph Engine Extensions (Future — deferred items from D4 and design doc)
+
+> **Status**: Not started. Items below were explicitly deferred during Phase 4 design review.
+
+### 13. Match Pattern Queries (D4 — deferred to Phase 5+)
+- [ ] Design `MatchPattern` schema for structured graph pattern matching
+- [ ] Implement Cypher pattern builder for arbitrary multi-hop typed patterns
+- [ ] Support compound patterns (e.g., "A -[derived_from]-> B -[supports]-> C")
+- [ ] Add validation for pattern syntax and depth limits
+- [ ] Integration tests with complex pattern topologies
+
+### 14. Graph-Aware Relevance Scoring
+- [ ] Design relevance scoring that combines graph distance with text/semantic scores
+- [ ] Implement weighted scoring: closer graph neighbors score higher
+- [ ] Integrate with hybrid search RRF algorithm
+- [ ] A/B testing framework for scoring tuning
+
+### 15. Graph Analytics Endpoints
+- [ ] `GET /graph/stats` — vertex/edge counts per tenant graph
+- [ ] `GET /graph/neighbors/{artifact_id}` — direct neighbor listing with counts by type
+- [ ] Graph visualization data endpoint (nodes + edges for UI rendering)
+
+### 16. Performance Optimization
+- [ ] Evaluate AGE 1.8+ features (ALL() predicate, shortestPath()) when available
+- [ ] Consider materialized path or closure table if Cypher VLP performance is insufficient at scale
+- [ ] Benchmark traversal performance with realistic graph density (1000+ nodes, 5000+ edges)
+- [ ] Evaluate pre-computed scope caching for frequently-queried root artifacts
 
 ---
 
 ## Summary
 
-| # | Item | Risk | Phase | Depends On |
-|---|---|---|---|---|
-| 1 | Pagination on all search types | None | 1 | — |
-| 2 | Metadata filtering | Low | 1 | — |
-| 3 | Parent-child hierarchy scoping | Low | 1 | — |
-| 4 | Soft-delete interaction semantics (spec) | None (documentation) | 2 | — |
-| 5 | Tenant type deletion policy (schema) | Moderate | 2 | #4 |
-| 6 | Soft deletion | Moderate | 2 | #5 |
-| 7 | Physical deletion with cascade | Moderate-High | 2 | #5, #6 |
-| 8 | Unified search endpoint | High | 3 | #1, #2, #3 |
-| 9 | General graph scoping with depth | Highest | 4 | #3, #8 (recommended) |
+| # | Item | Risk | Phase | Status | Depends On |
+|---|---|---|---|---|---|
+| 1 | Pagination on all search types | None | 1 | ✅ | — |
+| 2 | Metadata filtering | Low | 1 | ✅ | — |
+| 3 | Parent-child hierarchy scoping | Low | 1 | ✅ | — |
+| 4 | Soft-delete interaction semantics (spec) | None (documentation) | 2 | ✅ | — |
+| 5 | Tenant type deletion policy (schema) | Moderate | 2 | ✅ | #4 |
+| 6 | Soft deletion | Moderate | 2 | ✅ | #5 |
+| 7 | Physical deletion with cascade | Moderate-High | 2 | ✅ | #5, #6 |
+| 8 | Unified search endpoint | High | 3 | ✅ | #1, #2, #3 |
+| 9 | Graph engine foundation | High | 4 | ✅ | #8 |
+| 10 | Graph scoping with depth control | High | 4 | ✅ | #9 |
+| 11 | Context service migration | Moderate | 4 | ✅ | #9 |
+| 12 | Graph engine testing | — | 4 | ✅ | #9, #10, #11 |
+| 13 | Match pattern queries | High | 5 | 🔮 | #9 |
+| 14 | Graph-aware relevance scoring | Moderate | 5 | 🔮 | #10 |
+| 15 | Graph analytics endpoints | Low | 5 | 🔮 | #9 |
+| 16 | Performance optimization | Moderate | 5 | 🔮 | #10 |
 
 ---
 
@@ -157,3 +215,5 @@
 | 2026-02-13 | Phase 3 implementation complete (Item 8, coding) | `POST /search` unified endpoint, `SearchStrategy` enum, `UnifiedSearchRequest` schema, strategy inference, deprecation headers on legacy endpoints, v3.0.0 |
 | 2026-02-13 | Phase 3 endpoint removal | Removed `POST /search/semantic`, `POST /search/hybrid`, `GET /search/similar/{id}`. Deleted `SemanticSearchRequest`, `HybridSearchRequest`. Retained `GET /search/fulltext` (deprecated). |
 | 2026-02-13 | Phase 3 complete | Consumer migration guide published (`comms/06_v3_migration_guide.md`). All Phase 3 items done. |
+| 2026-02-15 | Phase 4 implementation complete (Items 9-12) | Graph traversal engine via Apache AGE 1.7.0. Cypher VLP queries replace Python BFS. `graph_scope` on POST /search. Context service migrated. v4.0.0. |
+| 2026-02-15 | Phase 5 defined (Items 13-16) | Deferred items from Phase 4 design review: MatchPattern (D4), graph-aware scoring, analytics endpoints, performance optimization. |

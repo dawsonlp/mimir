@@ -10,7 +10,7 @@ V2.4 (Phase 3 Enhancement, 2026-02-13):
 from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from mimir.schemas.artifact import ArtifactResponse
 
@@ -139,12 +139,61 @@ class UnifiedSearchRequest(BaseModel):
         description="Relation direction: incoming, outgoing, or both",
     )
 
+    # === Graph scope ===
+    graph_scope: "GraphScope | None" = Field(
+        None,
+        description="Graph-based scoping: traverse from root artifact and restrict "
+        "search to the traversal result set. Mutually exclusive with scope_artifact_id.",
+    )
+
     # === Pagination ===
     limit: int = Field(20, ge=1, le=100, description="Maximum results to return")
     offset: int = Field(
         0,
         ge=0,
         description="Pagination offset. Deep offsets degrade on HNSW indexes.",
+    )
+
+
+    @model_validator(mode="after")
+    def validate_scope_exclusivity(self) -> "UnifiedSearchRequest":
+        """Ensure scope_artifact_id and graph_scope are mutually exclusive."""
+        if self.scope_artifact_id is not None and self.graph_scope is not None:
+            raise ValueError(
+                "scope_artifact_id and graph_scope are mutually exclusive. "
+                "Use graph_scope for graph-based scoping, or scope_artifact_id "
+                "for legacy hierarchy scoping. Do not provide both."
+            )
+        return self
+
+
+class GraphScope(BaseModel):
+    """Graph-based scoping for search: traverse from a root artifact and
+    restrict search results to the traversal result set.
+
+    This replaces and extends scope_artifact_id with configurable
+    depth, relation type filtering, and direction control.
+    """
+
+    root_artifact_id: UUID = Field(
+        ...,
+        description="UUID of the root artifact to traverse from",
+    )
+    max_depth: int = Field(
+        default=3,
+        ge=1,
+        le=20,
+        description="Maximum traversal depth from root artifact",
+    )
+    relation_types: list[str] | None = Field(
+        None,
+        description="Only follow these relation types during traversal. "
+        "None means all types.",
+    )
+    direction: str = Field(
+        default="both",
+        pattern=r"^(outgoing|incoming|both)$",
+        description="Traversal direction: outgoing, incoming, or both (undirected)",
     )
 
 

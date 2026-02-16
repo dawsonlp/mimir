@@ -49,12 +49,18 @@ from uuid import UUID
 from fastapi import APIRouter, Header, HTTPException, Query, Response
 
 from mimir.schemas.search import (
+    GraphScope,
     RelationDirection,
     SearchResponse,
     SearchStrategy,
     UnifiedSearchRequest,
 )
-from mimir.services import search_service
+from mimir.schemas.graph import (
+    GraphNotFoundError,
+    GraphQueryTimeoutError,
+    GraphScopeTooLargeError,
+)
+from mimir.services import graph_engine, search_service
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -342,6 +348,72 @@ def _parse_metadata_filters(metadata_filters_json: str | None) -> dict[str, str 
     return parsed
 
 
+# =============================================================================
+# Graph Scope Resolution (V4.0)
+# =============================================================================
+
+
+async def _resolve_graph_scope(
+    scope: GraphScope,
+    tenant_id: int,
+) -> set[str] | None:
+    """Resolve a GraphScope into a set of artifact ID strings.
+
+    Calls graph_engine.traverse() and returns the set of artifact UUIDs
+    (as strings) that fall within the graph scope. Returns None on error
+    after raising the appropriate HTTP exception.
+
+    Args:
+        scope: The GraphScope configuration.
+        tenant_id: Tenant ID for graph isolation.
+
+    Returns:
+        Set of artifact UUID strings within the scope.
+
+    Raises:
+        HTTPException: On graph engine errors (422, 504, 404).
+    """
+    try:
+        results = await graph_engine.traverse(
+            tenant_id=tenant_id,
+            start_artifact_id=scope.root_artifact_id,
+            max_depth=scope.max_depth,
+            relation_types=scope.relation_types,
+            direction=scope.direction,
+            include_start=True,  # D2: include root artifact in search scope
+        )
+    except GraphScopeTooLargeError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "GRAPH_SCOPE_TOO_LARGE",
+                "detail": str(exc),
+                "count": exc.count,
+                "limit": exc.limit,
+            },
+        )
+    except GraphQueryTimeoutError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail={
+                "code": "GRAPH_QUERY_TIMEOUT",
+                "detail": str(exc),
+                "timeout_seconds": exc.timeout_seconds,
+            },
+        )
+    except GraphNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "GRAPH_NOT_FOUND",
+                "detail": str(exc),
+                "graph_name": exc.graph_name,
+            },
+        )
+
+    return {str(r.artifact_id) for r in results}
+
+
 # ============================================================================
 # UNIFIED SEARCH (V2.4 — Phase 3)
 # ============================================================================
@@ -383,6 +455,33 @@ async def unified_search(
 
     The response includes a `strategy` field indicating which ranking strategy was used.
     """
+    # Handle graph_scope: traverse first, then filter search to traversal set
+    graph_artifact_ids: set[str] | None = None
+    if request.graph_scope is not None:
+        graph_artifact_ids = await _resolve_graph_scope(
+            request.graph_scope, x_tenant_id
+        )
+        if not graph_artifact_ids:
+            # Empty traversal → empty search results
+            return SearchResponse(
+                results=[],
+                total=0,
+                query=request.query or "",
+                strategy=_infer_search_strategy(request),
+            )
+    elif request.scope_artifact_id is not None:
+        # Backward compat: convert scope_artifact_id to graph_scope internally (D2)
+        compat_scope = GraphScope(
+            root_artifact_id=request.scope_artifact_id,
+            max_depth=1,
+            direction="both",
+        )
+        graph_artifact_ids = await _resolve_graph_scope(
+            compat_scope, x_tenant_id
+        )
+        # Clear scope_artifact_id so downstream doesn't also apply CTE scoping
+        request = request.model_copy(update={"scope_artifact_id": None})
+
     strategy = _infer_search_strategy(request)
 
     try:
@@ -396,6 +495,14 @@ async def unified_search(
             response = await _execute_similar(request, x_tenant_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # Post-filter by graph scope artifact IDs if resolved
+    if graph_artifact_ids is not None:
+        response.results = [
+            r for r in response.results
+            if str(r.artifact.id) in graph_artifact_ids
+        ]
+        response.total = len(response.results)
 
     response.strategy = strategy
     return response
