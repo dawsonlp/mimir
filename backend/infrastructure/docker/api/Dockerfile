@@ -1,7 +1,7 @@
- # Mímir V4 API - Multi-stage build
+# Mímir V4 API - Multi-stage build
 # SECURITY: No secrets in image - all credentials provided at runtime
 
-# Build stage - install dependencies
+# Build stage - install dependencies and register package metadata
 FROM python:3.13-slim AS builder
 WORKDIR /app
 
@@ -17,19 +17,22 @@ RUN poetry config virtualenvs.create false
 # Install dependencies without dev packages (--no-root skips project package)
 RUN poetry install --only main --no-interaction --no-root
 
-# PYTHONPATH=/app matches runtime - dev volume mount puts mimir/ directly at /app/mimir/
-ENV PYTHONPATH=/app
+# Copy source code and install the root package (registers importlib.metadata)
+# This is required so importlib.metadata.version("mimir") returns the correct version
+COPY src/ ./src/
+RUN poetry install --only-root --no-interaction
 
 # Runtime stage - lean production image
 FROM python:3.13-slim AS runtime
 WORKDIR /app
 
-# Copy installed packages from builder stage
+# Copy installed packages from builder stage (includes deps + mimir package metadata)
 COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code - src contents become the deployed package structure
 # (src/ is the sources root, not a package - only its contents are deployed)
+# PYTHONPATH=/app ensures this copy is used for imports (takes precedence over site-packages)
 COPY src/mimir/ ./mimir/
 COPY migrations/ ./migrations/
 
