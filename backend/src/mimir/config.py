@@ -9,6 +9,8 @@ from functools import lru_cache
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from mimir import __version__
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables.
@@ -49,8 +51,8 @@ class Settings(BaseSettings):
         description="API title for OpenAPI documentation",
     )
     api_version: str = Field(
-        default="4.0.1",
-        description="API version",
+        default=__version__,
+        description="API version (defaults to package version, overridable via API_VERSION env var)",
     )
 
     # Embedding settings

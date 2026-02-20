@@ -1,3 +1,8 @@
 """Mímir V4 - Knowledge graph and semantic memory API."""
 
-__version__ = "4.0.1"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("mimir")
+except PackageNotFoundError:
+    __version__ = "dev"

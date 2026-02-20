@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from mimir import __version__
 from mimir.config import settings
 from mimir.database import close_pool, init_pool
 from mimir.routers import (
@@ -147,7 +148,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Mímir V4",
     description=API_DESCRIPTION,
-    version="4.0.1",
+    version=__version__,
     lifespan=lifespan,
     openapi_tags=TAGS_METADATA,
     docs_url="/docs",
@@ -189,11 +190,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "version": "4.0.1"}
+    return {"status": "healthy", "version": __version__}
 
 
 # HTML landing page template
-LANDING_PAGE_HTML = """
+LANDING_PAGE_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -313,7 +314,7 @@ LANDING_PAGE_HTML = """
     <div class="header">
         <div class="logo">🧠</div>
         <h1>Mímir V4</h1>
-        <span class="version">v4.0.1</span>
+        <span class="version">v{version}</span>
         <p class="tagline">Knowledge Graph &amp; Semantic Memory API</p>
     </div>
     
@@ -363,4 +364,4 @@ LANDING_PAGE_HTML = """
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def root():
     """Landing page with links to documentation."""
-    return LANDING_PAGE_HTML
+    return LANDING_PAGE_TEMPLATE.format(version=__version__)
