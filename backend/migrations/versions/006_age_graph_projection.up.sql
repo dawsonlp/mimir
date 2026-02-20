@@ -1,4 +1,4 @@
--- Mímir Migration 007: AGE Graph Projection
+-- Mímir Migration 006: AGE Graph Projection
 -- Projects relational artifacts/relations into per-tenant AGE graphs
 -- See: docs/age-graph-projection-technical-design.md
 --
@@ -104,12 +104,11 @@ BEGIN
     PERFORM mimirdata.drop_tenant_graph(p_tenant_id);
     PERFORM mimirdata.create_tenant_graph(p_tenant_id);
 
-    -- Bulk insert all non-deleted artifacts as vertices
+    -- Bulk insert all artifacts as vertices
     FOR rec IN
         SELECT id, artifact_type, title, created_at
         FROM mimirdata.artifact
         WHERE tenant_id = p_tenant_id
-          AND deleted_at IS NULL
     LOOP
         v_cypher := format(
             'SELECT * FROM ag_catalog.cypher(%L, $cypher$
@@ -129,13 +128,11 @@ BEGIN
         EXECUTE v_cypher;
     END LOOP;
 
-    -- Bulk insert all relations where both endpoints are non-deleted
+    -- Bulk insert all relations as edges
     FOR rec IN
         SELECT r.id, r.source_id, r.target_id, r.relation_type,
                r.confidence, r.created_at
         FROM mimirdata.relation r
-        JOIN mimirdata.artifact sa ON sa.id = r.source_id AND sa.deleted_at IS NULL
-        JOIN mimirdata.artifact ta ON ta.id = r.target_id AND ta.deleted_at IS NULL
         WHERE r.tenant_id = p_tenant_id
     LOOP
         v_cypher := format(
@@ -202,32 +199,6 @@ BEGIN
         quote_literal(NEW.created_at::text)
     );
     EXECUTE v_cypher;
-
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- -----------------------------------------------------------------------------
--- Artifact: AFTER UPDATE OF deleted_at → remove vertex when soft-deleted
--- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION mimirdata.trg_artifact_soft_delete_vertex()
-RETURNS trigger AS $$
-DECLARE
-    v_graph_name TEXT := 'mimir_tenant_' || NEW.tenant_id::text;
-    v_cypher TEXT;
-BEGIN
-    -- Only act when deleted_at transitions from NULL to a value
-    IF OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL THEN
-        v_cypher := format(
-            'SELECT * FROM ag_catalog.cypher(%L, $cypher$
-                MATCH (a:Artifact {mimir_id: %s})
-                DETACH DELETE a
-            $cypher$) AS (v ag_catalog.agtype)',
-            v_graph_name,
-            quote_literal(NEW.id::text)
-        );
-        EXECUTE v_cypher;
-    END IF;
 
     RETURN NEW;
 END;
@@ -330,11 +301,6 @@ CREATE TRIGGER age_artifact_create_vertex
     AFTER INSERT ON mimirdata.artifact
     FOR EACH ROW
     EXECUTE FUNCTION mimirdata.trg_artifact_create_vertex();
-
-CREATE TRIGGER age_artifact_soft_delete_vertex
-    AFTER UPDATE OF deleted_at ON mimirdata.artifact
-    FOR EACH ROW
-    EXECUTE FUNCTION mimirdata.trg_artifact_soft_delete_vertex();
 
 CREATE TRIGGER age_artifact_delete_vertex
     AFTER DELETE ON mimirdata.artifact

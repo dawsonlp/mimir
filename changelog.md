@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] - 2026-02-20
+
+### Breaking Changes
+- Removed `DELETE /artifacts/{id}` endpoint (artifact-level deletion no longer supported)
+- Removed `include_deleted` query parameters from all read endpoints
+- Removed `deleted_at` field from `ArtifactResponse` schema
+- Removed `deletion_policy` field from `TenantResponse` schema
+
+### Removed
+- Artifact-level soft-delete and physical-delete infrastructure (~850 lines removed)
+  - `DELETE /artifacts/{id}` endpoint
+  - `include_deleted` query parameters on all read paths
+  - `deleted_at` field from artifact responses and database queries
+  - `deletion_policy` from tenant type and tenant responses
+  - `SoftDeleteResponse` and `PhysicalDeleteResponse` schemas
+  - Migration 006 (deletion infrastructure: `deleted_at` column, `deletion_policy` column, partial index)
+  - AGE graph soft-delete trigger (`trg_artifact_soft_delete_vertex`)
+  - Double-JOIN artifact filters in relation, embedding, and search queries
+  - `test_deletion_phase2.py` integration tests
+  - `docs/soft-delete-semantics.md` specification
+
+### Fixed
+- Graph engine: AGE requires graph name as SQL string literal, not parameterized query value
+- Graph engine: Cypher variable `end` renamed to `dest` (reserved keyword in AGE/Cypher)
+- Agtype parser: Handle `::path` suffix in addition to `::vertex` and `::edge`
+- test_api: `test_artifact_crud_lifecycle` updated for append-only model (removed PATCH/DELETE assertions)
+- test_api: Fixed provenance URL path (`/provenance/artifact/{id}` not `/provenance/entity/artifact/{id}`)
+- test_graph_scoped_search: Use unique shortnames per test run to avoid duplicate key errors on re-run
+
+### Added
+- `DELETE /tenants/{tenant_id}` endpoint for complete tenant removal via FK CASCADE
+  - Drops tenant's AGE graph
+  - Cascades through all content tables: artifacts, relations, embeddings, provenance events
+  - Returns 204 on success, 404 if tenant not found
+- `delete_tenant()` function in tenant service
+
+### Changed
+- Relation queries simplified: removed double-JOIN to artifact table for deleted_at checks
+- Embedding queries simplified: removed JOIN to artifact table for deleted_at checks
+- Search queries simplified: removed 5 `deleted_at IS NULL` clauses
+- Context service simplified: removed soft-delete exclusion from `_strip_content()`
+- AGE graph projection migration renumbered from 007 to 006
+- `rebuild_tenant_graph()` SQL function: removed `deleted_at IS NULL` filters from vertex/edge rebuild queries
+
 ## [4.0.0] - 2026-02-15
 
 ### Added
@@ -96,6 +140,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hybrid search with RRF fusion
 - Context assembly endpoint
 
+[5.0.0]: https://github.com/dawsonlp/mimir/compare/v4.0.0...v5.0.0
 [4.0.0]: https://github.com/dawsonlp/mimir/compare/v3.0.0...v4.0.0
 [3.0.0]: https://github.com/dawsonlp/mimir/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/dawsonlp/mimir/releases/tag/v2.0.0
