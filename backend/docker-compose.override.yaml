@@ -1,4 +1,4 @@
-# Mímir - Development overrides - hot reload and debugging
+# Mímir - Development overrides - hot reload via volume mounts
 # This file is automatically applied with docker-compose.yaml
 
 services:
@@ -6,17 +6,16 @@ services:
     build:
       context: .
       dockerfile: infrastructure/docker/api/Dockerfile
-      target: builder  # Use builder stage with dependencies
     volumes:
-      # Mount migrations for local development
       - ./src/mimir:/app/mimir:ro
       - ./migrations:/app/migrations:ro
+    environment:
+      PYTHONPATH: /app
 
   api:
     build:
       context: .
       dockerfile: infrastructure/docker/api/Dockerfile
-      target: builder  # Use builder stage for dev
     volumes:
       # Mount package directly to match production layout (/app/mimir/)
       # src/ is project organization only - contents deployed directly
@@ -24,5 +23,9 @@ services:
       - ./migrations:/app/migrations:ro
     environment:
       LOG_LEVEL: DEBUG
+      PYTHONPATH: /app  # Mounted source takes precedence over installed package in venv
     # Override CMD for hot reload in development
-    command: ["uvicorn", "mimir.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/mimir"]
+    command: >
+      uvicorn mimir.main:app
+      --host 0.0.0.0 --port 8000
+      --reload --reload-dir /app/mimir

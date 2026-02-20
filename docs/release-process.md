@@ -63,7 +63,7 @@ Follow semantic versioning (SemVer):
 
 When a `v*` tag is pushed, the workflow (`.github/workflows/release.yaml`):
 
-1. Builds multi-arch Docker images for both API and PostgreSQL
+1. Builds multi-arch Docker image for the API
 2. Pushes to Docker Hub with the version tag AND `latest`
 3. Creates a GitHub Release with auto-generated release notes
 
@@ -74,7 +74,6 @@ Each release produces:
 | Image | Tags |
 |-------|------|
 | `dawsonlp/mimir-api` | `v1.x.x`, `latest` |
-| `dawsonlp/mimir-postgres` | `v1.x.x`, `latest` |
 
 ## Prerequisites
 

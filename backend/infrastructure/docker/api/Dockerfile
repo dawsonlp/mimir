@@ -1,44 +1,39 @@
-# Mímir V4 API - Multi-stage build
+# Mímir V4 API - Multi-stage build with uv
 # SECURITY: No secrets in image - all credentials provided at runtime
 
-# Build stage - install dependencies and register package metadata
+# ── Build stage ──────────────────────────────────────────────
 FROM python:3.13-slim AS builder
 WORKDIR /app
 
-# Install Poetry for dependency resolution
-RUN pip install --no-cache-dir poetry
+# Install uv (fast Python package installer)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copy only dependency files first (better layer caching)
+# Create venv for clean dependency isolation
+RUN uv venv /app/.venv
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Copy project metadata + source
 COPY pyproject.toml README.md ./
-
-# Configure poetry to install deps globally (no virtualenv in container)
-RUN poetry config virtualenvs.create false
-
-# Install dependencies without dev packages (--no-root skips project package)
-RUN poetry install --only main --no-interaction --no-root
-
-# Copy source code and install the root package (registers importlib.metadata)
-# This is required so importlib.metadata.version("mimir") returns the correct version
 COPY src/ ./src/
-RUN poetry install --only-root --no-interaction
 
-# Runtime stage - lean production image
+# Install package + production deps into venv (single shot)
+# Registers importlib.metadata AND installs all dependencies
+RUN uv pip install --no-cache .
+
+# ── Runtime stage ────────────────────────────────────────────
 FROM python:3.13-slim AS runtime
 WORKDIR /app
 
-# Copy installed packages from builder stage (includes deps + mimir package metadata)
-COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Copy the fully-built venv (deps + installed package + metadata)
+COPY --from=builder /app/.venv /app/.venv
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
 
-# Copy application code - src contents become the deployed package structure
-# (src/ is the sources root, not a package - only its contents are deployed)
-# PYTHONPATH=/app ensures this copy is used for imports (takes precedence over site-packages)
-COPY src/mimir/ ./mimir/
+# Copy non-Python artifacts (migrations, static files, etc.)
 COPY migrations/ ./migrations/
 
-# PYTHONPATH points to workdir where mimir/ package now lives
-ENV PYTHONPATH=/app
-
+# No PYTHONPATH needed - mimir is properly installed in the venv
 # No default environment variables with secrets
 # All credentials provided at runtime via docker-compose or orchestrator
 

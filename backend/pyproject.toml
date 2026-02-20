@@ -1,52 +1,56 @@
-[tool.poetry]
+[project]
 name = "mimir"
 # SINGLE SOURCE OF TRUTH for version.
 # All other files (__init__.py, config.py, main.py) read from here via importlib.metadata.
 # To release: bump this version, commit, tag (vX.Y.Z), push. CI builds and deploys automatically.
-version = "4.0.4"
+version = "4.0.5"
 description = "Mímir - Durable Memory & Meta-Analysis Storage System"
-authors = ["Development Team"]
+authors = [{name = "Development Team"}]
 readme = "README.md"
-packages = [{include = "mimir", from = "src"}]
+requires-python = ">=3.13"
 
-[tool.poetry.dependencies]
-python = "^3.13"
+dependencies = [
+    # Core - FastAPI stack
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "pydantic-settings",
 
-# Core - FastAPI stack
-fastapi = "*"
-uvicorn = {extras = ["standard"], version = "*"}
-pydantic = "*"
-pydantic-settings = "*"
+    # Database - PostgreSQL with pgvector (NO ORM - raw SQL via psycopg)
+    "psycopg[binary,pool]",
+    "pgvector",
 
-# Database - PostgreSQL with pgvector (NO ORM - raw SQL via psycopg)
-psycopg = {extras = ["binary", "pool"], version = "*"}
-pgvector = "*"
+    # Logging
+    "structlog",
 
-# Logging
-structlog = "*"
+    # HTTP client for external APIs (embedding providers)
+    "httpx",
 
-# HTTP client for external APIs (embedding providers)
-httpx = "*"
+    # CLI tools
+    "typer",
+    "rich",
+]
 
-# CLI tools
-typer = "*"
-rich = "*"
+[project.optional-dependencies]
+dev = [
+    # Testing
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+    "testcontainers",
 
-[tool.poetry.group.dev.dependencies]
-# Testing
-pytest = "*"
-pytest-asyncio = "*"
-httpx = "*"
-testcontainers = "*"
-
-# Code quality
-black = "*"
-ruff = "*"
-mypy = "*"
+    # Code quality
+    "black",
+    "ruff",
+    "mypy",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mimir"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
