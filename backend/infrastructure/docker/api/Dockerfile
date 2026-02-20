@@ -9,7 +9,7 @@ WORKDIR /app
 RUN pip install --no-cache-dir poetry
 
 # Copy only dependency files first (better layer caching)
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 
 # Configure poetry to install deps globally (no virtualenv in container)
 RUN poetry config virtualenvs.create false
