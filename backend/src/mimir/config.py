@@ -1,4 +1,4 @@
-"""Configuration management for Mímir V3.
+"""Configuration management for Mímir V4.
 
 Uses pydantic-settings for environment variable loading with validation.
 All secrets are validated at startup to fail fast on misconfiguration.
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
         description="API title for OpenAPI documentation",
     )
     api_version: str = Field(
-        default="2.0.0",
+        default="4.0.1",
         description="API version",
     )
 

@@ -11,7 +11,6 @@ on:
 env:
   REGISTRY: docker.io
   API_IMAGE: dawsonlp/mimir-api
-  POSTGRES_IMAGE: dawsonlp/mimir-postgres
 
 permissions:
   contents: write
@@ -56,19 +55,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push PostgreSQL image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          file: ./backend/infrastructure/docker/postgres/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ env.POSTGRES_IMAGE }}:${{ steps.version.outputs.VERSION }}
-            ${{ env.POSTGRES_IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -76,4 +62,3 @@ jobs:
           body: |
             ## Docker Images
             - `${{ env.API_IMAGE }}:${{ steps.version.outputs.VERSION }}`
-            - `${{ env.POSTGRES_IMAGE }}:${{ steps.version.outputs.VERSION }}`

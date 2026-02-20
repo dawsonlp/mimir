@@ -1,4 +1,4 @@
-# Mímir V2 API - Multi-stage build
+# Mímir V4 API - Multi-stage build
 # SECURITY: No secrets in image - all credentials provided at runtime
 
 # Build stage - install dependencies

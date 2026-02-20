@@ -1,3 +1,3 @@
-"""Mímir V3 - Knowledge graph and semantic memory API."""
+"""Mímir V4 - Knowledge graph and semantic memory API."""
 
-__version__ = "2.0.0"
+__version__ = "4.0.1"
