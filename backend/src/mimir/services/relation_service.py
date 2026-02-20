@@ -1,8 +1,7 @@
-"""Relation service - database operations for relations (V2.2 with soft-delete awareness).
+"""Relation service - database operations for relations.
 
-V2.2 Changes (Phase 2):
-- All retrieval queries join artifact table to exclude relations where
-  source OR target artifact is soft-deleted (deleted_at IS NOT NULL)
+Relations are append-only — no update or delete operations.
+Tenant-level deletion via FK CASCADE is the only cleanup mechanism.
 
 V2 Changes:
 - UUID primary keys (client-generated or server-generated)
@@ -85,17 +84,14 @@ async def create_relation(tenant_id: int, data: RelationCreate) -> RelationRespo
 
 
 async def get_relation(relation_id: UUID, tenant_id: int) -> RelationResponse | None:
-    """Get relation by UUID. Excludes relations where source or target is soft-deleted."""
+    """Get relation by UUID."""
     async with get_connection() as conn:
         result = await conn.execute(
             f"""
-            SELECT r.id, r.tenant_id, r.source_id, r.target_id, r.relation_type,
-                   r.confidence, r.metadata, r.created_at
-            FROM {SCHEMA_NAME}.relation r
-            JOIN {SCHEMA_NAME}.artifact src ON src.id = r.source_id
-            JOIN {SCHEMA_NAME}.artifact tgt ON tgt.id = r.target_id
-            WHERE r.id = %s AND r.tenant_id = %s
-              AND src.deleted_at IS NULL AND tgt.deleted_at IS NULL
+            SELECT id, tenant_id, source_id, target_id, relation_type,
+                   confidence, metadata, created_at
+            FROM {SCHEMA_NAME}.relation
+            WHERE id = %s AND tenant_id = %s
             """,
             (str(relation_id), tenant_id),
         )
@@ -115,30 +111,24 @@ async def list_relations(
     target_id: UUID | None = None,
     relation_type: str | None = None,
 ) -> RelationListResponse:
-    """List relations with optional filtering. Excludes relations with soft-deleted endpoints."""
+    """List relations with optional filtering."""
     async with get_connection() as conn:
-        where_clause = "WHERE r.tenant_id = %s AND src.deleted_at IS NULL AND tgt.deleted_at IS NULL"
+        where_clause = "WHERE tenant_id = %s"
         query_params: list = [tenant_id]
 
         if source_id:
-            where_clause += " AND r.source_id = %s"
+            where_clause += " AND source_id = %s"
             query_params.append(str(source_id))
         if target_id:
-            where_clause += " AND r.target_id = %s"
+            where_clause += " AND target_id = %s"
             query_params.append(str(target_id))
         if relation_type:
-            where_clause += " AND r.relation_type = %s"
+            where_clause += " AND relation_type = %s"
             query_params.append(relation_type)
-
-        join_clause = f"""
-            FROM {SCHEMA_NAME}.relation r
-            JOIN {SCHEMA_NAME}.artifact src ON src.id = r.source_id
-            JOIN {SCHEMA_NAME}.artifact tgt ON tgt.id = r.target_id
-        """
 
         # Get count
         count_result = await conn.execute(
-            f"SELECT COUNT(*) {join_clause} {where_clause}",
+            f"SELECT COUNT(*) FROM {SCHEMA_NAME}.relation {where_clause}",
             query_params,
         )
         total = (await count_result.fetchone())[0]
@@ -146,11 +136,11 @@ async def list_relations(
         # Get relations
         result = await conn.execute(
             f"""
-            SELECT r.id, r.tenant_id, r.source_id, r.target_id, r.relation_type,
-                   r.confidence, r.metadata, r.created_at
-            {join_clause}
+            SELECT id, tenant_id, source_id, target_id, relation_type,
+                   confidence, metadata, created_at
+            FROM {SCHEMA_NAME}.relation
             {where_clause}
-            ORDER BY r.created_at DESC
+            ORDER BY created_at DESC
             LIMIT %s OFFSET %s
             """,
             query_params + [limit, offset],
@@ -169,40 +159,35 @@ async def get_artifact_relations(
     as_target: bool = True,
     relation_type: str | None = None,
 ) -> list[RelationResponse]:
-    """Get all relations for an artifact (as source, target, or both).
-
-    Excludes relations where the other endpoint artifact is soft-deleted.
-    """
+    """Get all relations for an artifact (as source, target, or both)."""
     async with get_connection() as conn:
-        conditions = ["r.tenant_id = %s", "src.deleted_at IS NULL", "tgt.deleted_at IS NULL"]
+        conditions = ["tenant_id = %s"]
         params: list = [tenant_id]
 
         entity_conditions = []
         if as_source:
-            entity_conditions.append("r.source_id = %s")
+            entity_conditions.append("source_id = %s")
             params.append(str(artifact_id))
         if as_target:
-            entity_conditions.append("r.target_id = %s")
+            entity_conditions.append("target_id = %s")
             params.append(str(artifact_id))
 
         if entity_conditions:
             conditions.append(f"({' OR '.join(entity_conditions)})")
 
         if relation_type:
-            conditions.append("r.relation_type = %s")
+            conditions.append("relation_type = %s")
             params.append(relation_type)
 
         where_clause = " AND ".join(conditions)
 
         result = await conn.execute(
             f"""
-            SELECT r.id, r.tenant_id, r.source_id, r.target_id, r.relation_type,
-                   r.confidence, r.metadata, r.created_at
-            FROM {SCHEMA_NAME}.relation r
-            JOIN {SCHEMA_NAME}.artifact src ON src.id = r.source_id
-            JOIN {SCHEMA_NAME}.artifact tgt ON tgt.id = r.target_id
+            SELECT id, tenant_id, source_id, target_id, relation_type,
+                   confidence, metadata, created_at
+            FROM {SCHEMA_NAME}.relation
             WHERE {where_clause}
-            ORDER BY r.created_at DESC
+            ORDER BY created_at DESC
             """,
             params,
         )
@@ -217,7 +202,7 @@ async def check_relation_exists(
     source_id: UUID,
     target_id: UUID,
 ) -> bool:
-    """Check if a specific relation already exists (ignores soft-delete status)."""
+    """Check if a specific relation already exists."""
     async with get_connection() as conn:
         result = await conn.execute(
             f"""

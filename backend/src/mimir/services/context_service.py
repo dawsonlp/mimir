@@ -365,5 +365,4 @@ def _strip_content(artifact: ArtifactResponse) -> ArtifactResponse:
         external_id=artifact.external_id,
         metadata=artifact.metadata,
         created_at=artifact.created_at,
-        deleted_at=getattr(artifact, 'deleted_at', None),
     )

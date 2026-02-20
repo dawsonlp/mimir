@@ -1,18 +1,11 @@
-"""Search service - fulltext, semantic, and hybrid search (V2.2).
+"""Search service - fulltext, semantic, and hybrid search.
 
-V2.2 Changes (Phase 2 Enhancement):
-- All queries exclude soft-deleted artifacts (deleted_at IS NULL)
-- Recursive CTE for scoping includes deleted_at IS NULL at every level
-
-V2.2 Changes (Phase 1 Enhancement):
+Features:
 - All search types support offset for pagination
 - Metadata filtering via JSONB containment (AND across keys, OR within arrays)
 - Hierarchy scoping via recursive CTE on parent_artifact_id
-
-V2.1 Changes:
-- Semantic search now requires embedding_type parameter
+- Semantic search requires embedding_type parameter
 - Vectors are queried from mimir_vectors.vec_{type} child tables
-- Uses artifact_id instead of entity_id/entity_type
 """
 
 import json
@@ -178,9 +171,6 @@ async def _resolve_scope_descendants(
     (callers treat None as "no results").
 
     The CTE includes tenant_id filtering at every recursion level for multi-tenant safety.
-    Includes a forward-compatible deleted_at IS NULL filter — currently a no-op since
-    the deleted_at column does not yet exist (Phase 2). The filter is wrapped in a
-    column-existence check so it does not error on the current schema.
 
     Args:
         tenant_id: Tenant ID for isolation
@@ -190,11 +180,11 @@ async def _resolve_scope_descendants(
         Set of descendant UUIDs (including anchor), or None if anchor not found
     """
     async with get_connection() as conn:
-        # First verify the scope anchor exists, belongs to this tenant, and is not soft-deleted
+        # Verify the scope anchor exists and belongs to this tenant
         check_result = await conn.execute(
             f"""
             SELECT id FROM {SCHEMA_NAME}.artifact
-            WHERE id = %s AND tenant_id = %s AND deleted_at IS NULL
+            WHERE id = %s AND tenant_id = %s
             """,
             (str(scope_artifact_id), tenant_id),
         )
@@ -203,14 +193,14 @@ async def _resolve_scope_descendants(
             return None
 
         # Recursive CTE to get all descendants
-        # tenant_id and deleted_at IS NULL enforced at every level
+        # tenant_id enforced at every level for multi-tenant safety
         result = await conn.execute(
             f"""
             WITH RECURSIVE descendants AS (
                 -- Base case: the scope anchor itself
                 SELECT id
                 FROM {SCHEMA_NAME}.artifact
-                WHERE id = %s AND tenant_id = %s AND deleted_at IS NULL
+                WHERE id = %s AND tenant_id = %s
 
                 UNION ALL
 
@@ -218,7 +208,7 @@ async def _resolve_scope_descendants(
                 SELECT a.id
                 FROM {SCHEMA_NAME}.artifact a
                 INNER JOIN descendants d ON a.parent_artifact_id = d.id
-                WHERE a.tenant_id = %s AND a.deleted_at IS NULL
+                WHERE a.tenant_id = %s
             )
             SELECT id FROM descendants
             """,
@@ -274,7 +264,7 @@ async def fulltext_search(
             return SearchResponse(results=[], total=0, query=query)
 
     async with get_connection() as conn:
-        where_clause = "WHERE tenant_id = %s AND deleted_at IS NULL AND search_vector @@ plainto_tsquery('english', %s)"
+        where_clause = "WHERE tenant_id = %s AND search_vector @@ plainto_tsquery('english', %s)"
         params: list = [tenant_id, query]
 
         if artifact_types:
@@ -365,7 +355,7 @@ async def semantic_search(
 
     async with get_connection() as conn:
         # Join embedding master table with vector child table and artifact
-        where_clause = "WHERE e.tenant_id = %s AND a.deleted_at IS NULL"
+        where_clause = "WHERE e.tenant_id = %s"
         params: list = [tenant_id]
 
         if artifact_types:

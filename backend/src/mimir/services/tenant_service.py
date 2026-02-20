@@ -1,8 +1,7 @@
-"""Tenant service - database operations for tenants (V2).
+"""Tenant service - database operations for tenants.
 
-V2.2 Changes (Phase 2):
-- Joins tenant_type to expose deletion_policy on every tenant response
-- get_deletion_policy() helper for artifact deletion enforcement
+Append-only content model. Tenant deletion via FK CASCADE removes all
+associated artifacts, relations, embeddings, and provenance events.
 """
 
 from mimir.database import get_connection
@@ -11,13 +10,11 @@ from mimir.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
 # Schema name for all tables
 SCHEMA_NAME = "mimirdata"
 
-# Column list shared across all tenant queries (joined with tenant_type for deletion_policy)
+# Column list shared across all tenant queries (8 columns)
 _TENANT_SELECT = f"""
     SELECT t.id, t.shortname, t.name, t.tenant_type, t.description,
-           t.is_active, t.created_at, t.metadata,
-           tt.deletion_policy
+           t.is_active, t.created_at, t.metadata
     FROM {SCHEMA_NAME}.tenant t
-    JOIN {SCHEMA_NAME}.tenant_type tt ON tt.code = t.tenant_type
 """
 
 
@@ -42,7 +39,7 @@ async def create_tenant(data: TenantCreate) -> TenantResponse:
         )
         await conn.commit()
 
-        # Re-fetch with joined deletion_policy
+        # Re-fetch
         result = await conn.execute(
             _TENANT_SELECT + " WHERE t.shortname = %s",
             (data.shortname,),
@@ -133,37 +130,50 @@ async def update_tenant(tenant_id: int, data: TenantUpdate) -> TenantResponse | 
         )
         await conn.commit()
 
-    # Re-fetch with joined deletion_policy
     return await get_tenant(tenant_id)
 
 
-async def get_deletion_policy(tenant_id: int) -> str | None:
-    """Get the deletion policy for a tenant via its tenant type.
+async def delete_tenant(tenant_id: int) -> bool:
+    """Delete tenant and all associated data via FK CASCADE.
 
-    Returns the policy string ('soft_delete', 'no_delete', 'physical_delete')
-    or None if the tenant does not exist.
+    Order matters:
+    1. DELETE tenant row — FK CASCADE deletes artifacts/relations/embeddings,
+       which fires AGE triggers to clean vertices/edges from the graph
+    2. Drop the AGE graph (now empty) — not covered by FK CASCADE
+
+    Returns True if tenant was deleted, False if not found.
     """
     async with get_connection() as conn:
+        # Delete tenant row — FK CASCADE handles all content tables
+        # AGE triggers on artifact/relation DELETE clean up graph vertices/edges
         result = await conn.execute(
-            f"""
-            SELECT tt.deletion_policy
-            FROM {SCHEMA_NAME}.tenant t
-            JOIN {SCHEMA_NAME}.tenant_type tt ON tt.code = t.tenant_type
-            WHERE t.id = %s
-            """,
+            f"DELETE FROM {SCHEMA_NAME}.tenant WHERE id = %s",
             (tenant_id,),
         )
-        row = await result.fetchone()
+        deleted = result.rowcount > 0
 
-    return row[0] if row else None
+        if deleted:
+            # Drop the AGE graph (now empty after cascade trigger cleanup)
+            graph_name = f"mimir_tenant_{tenant_id}"
+            try:
+                await conn.execute(
+                    "SELECT ag_catalog.drop_graph(%s, true)",
+                    (graph_name,),
+                )
+            except Exception:
+                pass  # Graph may not exist; safe to ignore
+
+        await conn.commit()
+
+    return deleted
 
 
 def _row_to_tenant_response(row: tuple) -> TenantResponse:
     """Convert database row to TenantResponse.
 
-    Row columns (9 total):
+    Row columns (8 total):
     0: id, 1: shortname, 2: name, 3: tenant_type, 4: description,
-    5: is_active, 6: created_at, 7: metadata, 8: deletion_policy
+    5: is_active, 6: created_at, 7: metadata
     """
     return TenantResponse(
         id=row[0],
@@ -174,5 +184,4 @@ def _row_to_tenant_response(row: tuple) -> TenantResponse:
         is_active=row[5],
         created_at=row[6],
         metadata=row[7],
-        deletion_policy=row[8],
     )

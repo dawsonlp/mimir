@@ -12,7 +12,7 @@ All tables live in the `mimirdata` schema.
 | **Append-only** | INSERT only on content tables (artifact, relation, embedding, provenance) |
 | **Client-generated UUIDs** | Optional on create; server generates UUIDv7 if omitted |
 | **No mutations** | No UPDATE on content tables |
-| **No deletes** | No DELETE on content tables (for now) |
+| **No artifact deletes** | No DELETE on content tables; tenant deletion via FK CASCADE |
 | **Supersedes = editorial intent** | Just a relation type, not identity equivalence |
 
 ## Tables

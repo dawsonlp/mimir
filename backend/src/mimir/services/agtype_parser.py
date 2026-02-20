@@ -14,11 +14,11 @@ Reference: AGE 1.7.0 agtype format (validated by spike in scripts/age_cypher_spi
 import json
 import re
 
-# Regex to strip ::vertex or ::edge suffix at end of string
-_SUFFIX_RE = re.compile(r"::(?:vertex|edge)\s*$")
+# Regex to strip ::vertex, ::edge, or ::path suffix at end of string
+_SUFFIX_RE = re.compile(r"::(?:vertex|edge|path)\s*$")
 
-# Regex to strip all ::vertex / ::edge suffixes within a collection string
-_COLLECTION_SUFFIX_RE = re.compile(r"::(?:vertex|edge)")
+# Regex to strip all ::vertex / ::edge / ::path suffixes within a collection string
+_COLLECTION_SUFFIX_RE = re.compile(r"::(?:vertex|edge|path)")
 
 
 def parse_agtype_value(raw: str | None) -> dict | str | int | float | bool | None:
