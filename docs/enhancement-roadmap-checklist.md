@@ -42,9 +42,11 @@
 
 ---
 
-## Phase 2: Deletion Infrastructure (Moderate risk — schema migration, new vocabulary column, mutable column on content table)
+## Phase 2: ~~Deletion Infrastructure~~ — REMOVED
 
-### 4. Soft-Delete Interaction Semantics (Specification — must be defined before implementation)
+> **Status**: Removed (2026-02-20). Artifact-level deletion (soft-delete, physical-delete) replaced by tenant-level deletion via FK CASCADE. See `docs/deletion-simplification-plan.md` for rationale. All Phase 2 code, migrations, tests, and specifications have been deleted. `DELETE /tenants/{tenant_id}` added as the sole cleanup mechanism.
+
+### ~~4. Soft-Delete Interaction Semantics~~ — Removed
 - [x] Specify: `scope_artifact_id` pointing to a soft-deleted artifact returns empty results (the scope anchor must be active)
 - [x] Specify: recursive CTE for scoping excludes soft-deleted intermediate nodes (if a file artifact is soft-deleted, its child chunks are unreachable via scoping even if not themselves soft-deleted)
 - [x] Specify: `GET /artifacts/{id}` returns 404 for soft-deleted artifacts (default behavior)
@@ -189,10 +191,10 @@
 | 1 | Pagination on all search types | None | 1 | ✅ | — |
 | 2 | Metadata filtering | Low | 1 | ✅ | — |
 | 3 | Parent-child hierarchy scoping | Low | 1 | ✅ | — |
-| 4 | Soft-delete interaction semantics (spec) | None (documentation) | 2 | ✅ | — |
-| 5 | Tenant type deletion policy (schema) | Moderate | 2 | ✅ | #4 |
-| 6 | Soft deletion | Moderate | 2 | ✅ | #5 |
-| 7 | Physical deletion with cascade | Moderate-High | 2 | ✅ | #5, #6 |
+| 4 | ~~Soft-delete interaction semantics~~ | — | 2 | ❌ Removed | — |
+| 5 | ~~Tenant type deletion policy~~ | — | 2 | ❌ Removed | — |
+| 6 | ~~Soft deletion~~ | — | 2 | ❌ Removed | — |
+| 7 | ~~Physical deletion with cascade~~ | — | 2 | ❌ Removed | — |
 | 8 | Unified search endpoint | High | 3 | ✅ | #1, #2, #3 |
 | 9 | Graph engine foundation | High | 4 | ✅ | #8 |
 | 10 | Graph scoping with depth control | High | 4 | ✅ | #9 |
@@ -217,3 +219,4 @@
 | 2026-02-13 | Phase 3 complete | Consumer migration guide published (`comms/06_v3_migration_guide.md`). All Phase 3 items done. |
 | 2026-02-15 | Phase 4 implementation complete (Items 9-12) | Graph traversal engine via Apache AGE 1.7.0. Cypher VLP queries replace Python BFS. `graph_scope` on POST /search. Context service migrated. v4.0.0. |
 | 2026-02-15 | Phase 5 defined (Items 13-16) | Deferred items from Phase 4 design review: MatchPattern (D4), graph-aware scoring, analytics endpoints, performance optimization. |
+| 2026-02-20 | Phase 2 removed | Artifact-level deletion (soft-delete, physical-delete) replaced by tenant-level deletion via FK CASCADE. ~850 lines removed, ~30 lines added. `DELETE /tenants/{id}` endpoint added. See `docs/deletion-simplification-plan.md`. |

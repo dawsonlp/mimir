@@ -1,4 +1,4 @@
-"""Mímir V4 - FastAPI application."""
+"""Mímir V5 - FastAPI application."""
 
 from contextlib import asynccontextmanager
 
@@ -29,7 +29,7 @@ from mimir.services import embedding_providers  # noqa: F401
 
 # OpenAPI description with entity overview
 API_DESCRIPTION = """
-# Mímir V4 - Knowledge Graph & Semantic Memory API
+# Mímir V5 - Knowledge Graph & Semantic Memory API
 
 Mímir stores and retrieves knowledge using a unified artifact model with semantic search.
 
@@ -146,7 +146,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Mímir V4",
+    title="Mímir V5",
     description=API_DESCRIPTION,
     version=__version__,
     lifespan=lifespan,
@@ -200,7 +200,7 @@ LANDING_PAGE_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mímir V4 - Knowledge Graph API</title>
+    <title>Mímir V5 - Knowledge Graph API</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -313,7 +313,7 @@ LANDING_PAGE_TEMPLATE = """
 <body>
     <div class="header">
         <div class="logo">🧠</div>
-        <h1>Mímir V4</h1>
+        <h1>Mímir V5</h1>
         <span class="version">v{version}</span>
         <p class="tagline">Knowledge Graph &amp; Semantic Memory API</p>
     </div>

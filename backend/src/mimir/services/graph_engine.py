@@ -72,10 +72,14 @@ async def _execute_cypher(
             await conn.execute(
                 f"SET LOCAL statement_timeout = '{timeout}s'"
             )
-            result = await conn.execute(
-                "SELECT * FROM ag_catalog.cypher(%s, %s) AS (result agtype)",
-                [graph_name, cypher],
+            # AGE requires graph name as a SQL string literal (not a parameter).
+            # graph_name is always 'mimir_tenant_N' — controlled, safe value.
+            # The Cypher query is also built by our pure functions, not user input.
+            sql = (
+                f"SELECT * FROM ag_catalog.cypher('{graph_name}', "
+                f"$cypher${cypher}$cypher$) AS (result agtype)"
             )
+            result = await conn.execute(sql)
             rows = await result.fetchall()
             return rows
 
@@ -113,13 +117,14 @@ def _build_traverse_cypher(
     Returns:
         Cypher query string.
     """
+    # Note: 'end' is a reserved keyword in AGE/Cypher — use 'dest' instead
     if direction == "outgoing":
-        pattern = f"(start:Artifact {{mimir_id: '{start_mimir_id}'}})-[*1..{max_depth}]->(end:Artifact)"
+        pattern = f"(s:Artifact {{mimir_id: '{start_mimir_id}'}})-[*1..{max_depth}]->(dest:Artifact)"
     elif direction == "incoming":
-        pattern = f"(start:Artifact {{mimir_id: '{start_mimir_id}'}})<-[*1..{max_depth}]-(end:Artifact)"
+        pattern = f"(s:Artifact {{mimir_id: '{start_mimir_id}'}})<-[*1..{max_depth}]-(dest:Artifact)"
     else:
         # "both" — undirected
-        pattern = f"(start:Artifact {{mimir_id: '{start_mimir_id}'}})-[*1..{max_depth}]-(end:Artifact)"
+        pattern = f"(s:Artifact {{mimir_id: '{start_mimir_id}'}})-[*1..{max_depth}]-(dest:Artifact)"
 
     return f"MATCH path = {pattern} RETURN path LIMIT {limit}"
 

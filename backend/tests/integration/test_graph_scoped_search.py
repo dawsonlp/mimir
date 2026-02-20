@@ -8,7 +8,7 @@ of scope_artifact_id via graph engine delegation.
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from uuid import UUID
+from uuid import UUID, uuid4
 
 
 # =============================================================================
@@ -37,22 +37,15 @@ async def search_graph(async_client: AsyncClient):
 
     All artifacts have searchable content containing "knowledge graph test".
     """
-    # Create tenant
+    # Create tenant with unique shortname to avoid collisions across runs
+    unique = uuid4().hex[:8]
     resp = await async_client.post("/tenants", json={
-        "shortname": "search-graph-test",
+        "shortname": f"sg-{unique}",
         "name": "Search Graph Test Tenant",
         "tenant_type": "environment",
     })
-    if resp.status_code == 409:
-        resp = await async_client.get("/tenants")
-        tenants = resp.json()
-        tenant_id = next(
-            t["id"] for t in tenants
-            if t["shortname"] == "search-graph-test"
-        )
-    else:
-        assert resp.status_code == 201, f"Create tenant failed: {resp.text}"
-        tenant_id = resp.json()["id"]
+    assert resp.status_code == 201, f"Create tenant failed: {resp.text}"
+    tenant_id = resp.json()["id"]
 
     headers = {"X-Tenant-ID": str(tenant_id)}
 

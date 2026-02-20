@@ -1,10 +1,11 @@
-"""Tenant API endpoints (V2).
+"""Tenant API endpoints.
 
 Tenants provide multi-tenant data isolation in Mímir. Each tenant represents
 a separate context (environment, project, or experiment) with complete data isolation.
+Tenant deletion via FK CASCADE removes all associated content.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from mimir.schemas.tenant import (
     TenantCreate,
@@ -57,3 +58,17 @@ async def update_tenant(tenant_id: int, data: TenantUpdate) -> TenantResponse:
     if not result:
         raise HTTPException(status_code=404, detail="Tenant not found")
     return result
+
+
+@router.delete("/{tenant_id}", status_code=204)
+async def delete_tenant(tenant_id: int) -> Response:
+    """Delete a tenant and all associated data.
+
+    This permanently removes the tenant and all artifacts, relations,
+    embeddings, and provenance events via FK CASCADE. The tenant's
+    AGE graph is also dropped.
+    """
+    deleted = await tenant_service.delete_tenant(tenant_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return Response(status_code=204)
