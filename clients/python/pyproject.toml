@@ -1,7 +1,7 @@
 [project]
 name = "mimir-client"
 # Version tracks Mímir API major version. See docs/design.md for strategy.
-version = "5.0.3"
+version = "5.0.4"
 description = "Official Python client for the Mímir Knowledge Graph API"
 authors = [{name = "Development Team"}]
 readme = "README.md"

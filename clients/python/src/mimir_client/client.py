@@ -660,6 +660,93 @@ class MimirClient:
             scope_artifact_id=scope_artifact_id,
         )
 
+    async def search_semantic(
+        self,
+        query_vector: list[float],
+        embedding_type: str,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        similarity_threshold: float | None = None,
+        artifact_types: list[str] | None = None,
+        metadata_filters: dict | None = None,
+        scope_artifact_id: UUID | str | None = None,
+        graph_scope: GraphScope | dict | None = None,
+    ) -> SearchResponse:
+        """Semantic (vector) search convenience method.
+
+        Requires a pre-computed query vector. For automatic embedding
+        generation from text, use ``mimir-semantic`` instead.
+        """
+        return await self.search(
+            query_vector=query_vector,
+            embedding_type=embedding_type,
+            limit=limit,
+            offset=offset,
+            similarity_threshold=similarity_threshold,
+            artifact_types=artifact_types,
+            metadata_filters=metadata_filters,
+            scope_artifact_id=scope_artifact_id,
+            graph_scope=graph_scope,
+        )
+
+    async def search_hybrid(
+        self,
+        query: str,
+        query_vector: list[float],
+        embedding_type: str,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        semantic_weight: float | None = None,
+        similarity_threshold: float | None = None,
+        artifact_types: list[str] | None = None,
+        metadata_filters: dict | None = None,
+        scope_artifact_id: UUID | str | None = None,
+        graph_scope: GraphScope | dict | None = None,
+    ) -> SearchResponse:
+        """Hybrid (fulltext + vector) search convenience method.
+
+        Combines keyword matching with vector similarity. Requires a
+        pre-computed query vector. For automatic embedding generation
+        from text, use ``mimir-semantic`` instead.
+        """
+        return await self.search(
+            query=query,
+            query_vector=query_vector,
+            embedding_type=embedding_type,
+            limit=limit,
+            offset=offset,
+            semantic_weight=semantic_weight,
+            similarity_threshold=similarity_threshold,
+            artifact_types=artifact_types,
+            metadata_filters=metadata_filters,
+            scope_artifact_id=scope_artifact_id,
+            graph_scope=graph_scope,
+        )
+
+    async def search_similar(
+        self,
+        artifact_id: UUID | str,
+        embedding_type: str,
+        *,
+        limit: int = 20,
+        similarity_threshold: float | None = None,
+        artifact_types: list[str] | None = None,
+    ) -> SearchResponse:
+        """Find artifacts similar to a given artifact.
+
+        Uses the existing embedding of the specified artifact
+        to find similar items.
+        """
+        return await self.search(
+            similar_to=artifact_id,
+            embedding_type=embedding_type,
+            limit=limit,
+            similarity_threshold=similarity_threshold,
+            artifact_types=artifact_types,
+        )
+
     # ── Context / RAG Assembly ─────────────────────────────────────────
 
     async def get_context(

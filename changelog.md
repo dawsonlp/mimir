@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.4] - 2026-02-21
+
+### Added
+- `mimir-client`: `search_semantic()` convenience method — vector search with pre-computed embeddings
+- `mimir-client`: `search_hybrid()` convenience method — combined fulltext + vector search
+- `mimir-client`: `search_similar()` convenience method — find similar artifacts by existing embedding
+- All new methods delegate to the unified `search()` with typed parameters and clear docstrings
+
+## [5.0.3] - 2026-02-21
+
+### Fixed
+- Ruff lint/format across all test files (imports, formatting, trailing newlines)
+- `TemporalHint` import in `context_service.py` (was referencing removed class)
+
+### Changed
+- Ruff config: suppress UP042 (str+Enum → StrEnum may affect Pydantic serialization)
+- Ruff config: suppress B017 (pytest.raises(Exception) acceptable in validation tests)
+
+## [5.0.2] - 2026-02-21
+
+### Added
+- `mimir-client` async HTTP client implementation (PyPI: `pip install mimir-client`)
+  - Full typed Pydantic response models for all API resources
+  - `MimirClient` with async context manager, automatic tenant header injection
+  - Convenience methods: `ensure_tenant()`, `ensure_artifact_type()`, `ensure_relation_type()`, `ensure_embedding_type()`
+  - `search()` unified search + `search_fulltext()` convenience method
+  - Structured error handling: `MimirNotFoundError`, `MimirConflictError`, `MimirValidationError`, `MimirServerError`
+  - `MimirClientSettings` with environment variable support (`MIMIR_API_URL`, `MIMIR_TENANT_ID`)
+
 ## [5.0.1] - 2026-02-21
 
 ### Fixed
@@ -159,6 +188,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hybrid search with RRF fusion
 - Context assembly endpoint
 
+[5.0.4]: https://github.com/dawsonlp/mimir/compare/v5.0.3...v5.0.4
+[5.0.3]: https://github.com/dawsonlp/mimir/compare/v5.0.2...v5.0.3
+[5.0.2]: https://github.com/dawsonlp/mimir/compare/v5.0.1...v5.0.2
 [5.0.1]: https://github.com/dawsonlp/mimir/compare/v5.0.0...v5.0.1
 [5.0.0]: https://github.com/dawsonlp/mimir/compare/v4.0.0...v5.0.0
 [4.0.0]: https://github.com/dawsonlp/mimir/compare/v3.0.0...v4.0.0
