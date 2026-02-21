@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.1] - 2026-02-21
+
+### Fixed
+- AGE Cypher triggers: replaced `quote_literal()` with `cypher_literal()` in all PL/pgSQL trigger functions that build Cypher queries inside `$cypher$` blocks. `quote_literal()` emits PostgreSQL `E'…'` syntax which the Cypher parser rejects, causing 500 errors on artifact titles containing apostrophes (e.g., "What's Next").
+  - `trg_artifact_create_vertex()`
+  - `trg_artifact_delete_vertex()`
+  - `trg_relation_create_edge()`
+  - `trg_relation_delete_edge()`
+  - `rebuild_tenant_graph()`
+- Docker Compose image tags updated from v4.0.5 to v5.0.1
+
+### Added
+- `cypher_literal()` PL/pgSQL helper function: escapes backslashes and single quotes, wraps in plain single quotes for valid Cypher string literals
+- Integration tests for artifact titles containing apostrophes, backslashes, and mixed special characters
+- `mimir-client` Python package published to PyPI (`pip install mimir-client`)
+
+### Changed
+- CI release pipeline: `publish-client` job uses `uv build` + `uv publish` instead of `pip install build` + `pypa/gh-action-pypi-publish`
+
 ## [5.0.0] - 2026-02-20
 
 ### Breaking Changes
@@ -140,6 +159,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hybrid search with RRF fusion
 - Context assembly endpoint
 
+[5.0.1]: https://github.com/dawsonlp/mimir/compare/v5.0.0...v5.0.1
 [5.0.0]: https://github.com/dawsonlp/mimir/compare/v4.0.0...v5.0.0
 [4.0.0]: https://github.com/dawsonlp/mimir/compare/v3.0.0...v4.0.0
 [3.0.0]: https://github.com/dawsonlp/mimir/compare/v2.0.0...v3.0.0
