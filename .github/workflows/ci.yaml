@@ -50,21 +50,6 @@ jobs:
       run:
         working-directory: backend
 
-    services:
-      postgres:
-        image: pgvector/pgvector:pg17
-        env:
-          POSTGRES_DB: mimir_test
-          POSTGRES_USER: mimir
-          POSTGRES_PASSWORD: test_password_minimum_16_chars
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - uses: actions/checkout@v4
 
@@ -85,11 +70,8 @@ jobs:
       - name: Run unit tests
         run: .venv/bin/pytest tests/unit -v
 
-      - name: Run integration tests
-        env:
-          DATABASE_URL: postgresql+psycopg://mimir:test_password_minimum_16_chars@localhost:5432/mimir_test
-          POSTGRES_PASSWORD: test_password_minimum_16_chars
-        run: .venv/bin/pytest tests/integration -v
+      # Integration tests require full stack (AGE, pgvector, migrations, running API).
+      # Run locally with: docker compose up && pytest tests/integration -v
 
   build:
     name: Build Docker Image
