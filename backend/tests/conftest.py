@@ -16,6 +16,7 @@ from httpx import ASGITransport, AsyncClient
 # Set test environment before importing app
 os.environ.setdefault("TESTING", "true")
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
+os.environ.setdefault("POSTGRES_PASSWORD", "test_password_minimum_16_chars")
 
 
 @pytest.fixture(scope="session")
