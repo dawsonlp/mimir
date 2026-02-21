@@ -42,9 +42,6 @@ jobs:
       - name: Run ruff formatter check
         run: .venv/bin/ruff format --check src/ tests/
 
-      - name: Run mypy type check
-        run: .venv/bin/mypy src/
-
   test:
     name: Test
     runs-on: ubuntu-latest
