@@ -329,6 +329,115 @@ class TestFindPaths:
 
 
 # =============================================================================
+# Special Character Tests — Single-Quote / Apostrophe in Titles
+# =============================================================================
+
+
+@pytest.mark.asyncio
+class TestSpecialCharacterTitles:
+    """Verify that artifact titles containing apostrophes and backslashes
+    survive the INSERT trigger (trg_artifact_create_vertex) without error.
+
+    The trigger builds a Cypher CREATE statement with the title interpolated
+    as a string literal. Before the fix, titles with single quotes caused a
+    syntax error (500) because quote_literal() emitted PostgreSQL E'…' syntax
+    inside $cypher$ blocks.
+
+    These tests verify creation succeeds (201) through the API, which proves
+    the trigger executed without error and the graph vertex was created.
+    """
+
+    @pytest_asyncio.fixture
+    async def apostrophe_tenant(self, async_client: AsyncClient):
+        """Create a dedicated tenant for special-character tests."""
+        import uuid as _uuid
+        shortname = f"apos-{_uuid.uuid4().hex[:8]}"
+        resp = await async_client.post("/tenants", json={
+            "shortname": shortname,
+            "name": "Apostrophe Test Tenant",
+            "tenant_type": "experiment",
+        })
+        assert resp.status_code == 201, f"Create tenant failed: {resp.text}"
+        tenant_id = resp.json()["id"]
+        return {"tenant_id": tenant_id, "headers": {"X-Tenant-ID": str(tenant_id)}}
+
+    async def test_apostrophe_in_title(self, async_client, apostrophe_tenant):
+        """Title with a single apostrophe: "What's Next"."""
+        resp = await async_client.post("/artifacts", json={
+            "artifact_type": "document",
+            "title": "What's Next",
+            "content": "Content with apostrophe",
+            "source": "apostrophe-test",
+        }, headers=apostrophe_tenant["headers"])
+        assert resp.status_code == 201, (
+            f"Artifact with apostrophe title failed: {resp.text}"
+        )
+
+    async def test_double_apostrophe_in_title(self, async_client, apostrophe_tenant):
+        """Title with multiple apostrophes: "It's John's Plan"."""
+        resp = await async_client.post("/artifacts", json={
+            "artifact_type": "document",
+            "title": "It's John's Plan",
+            "content": "Content with double apostrophe",
+            "source": "apostrophe-test",
+        }, headers=apostrophe_tenant["headers"])
+        assert resp.status_code == 201, (
+            f"Artifact with double apostrophe title failed: {resp.text}"
+        )
+
+    async def test_backslash_in_title(self, async_client, apostrophe_tenant):
+        """Title with backslashes: "path\\to\\file"."""
+        resp = await async_client.post("/artifacts", json={
+            "artifact_type": "document",
+            "title": "path\\to\\file",
+            "content": "Content with backslashes",
+            "source": "apostrophe-test",
+        }, headers=apostrophe_tenant["headers"])
+        assert resp.status_code == 201, (
+            f"Artifact with backslash title failed: {resp.text}"
+        )
+
+    async def test_mixed_special_chars_in_title(self, async_client, apostrophe_tenant):
+        """Title with both apostrophes and backslashes: "O'Brien's C:\\Users\\doc"."""
+        resp = await async_client.post("/artifacts", json={
+            "artifact_type": "document",
+            "title": "O'Brien's C:\\Users\\doc",
+            "content": "Content with mixed specials",
+            "source": "apostrophe-test",
+        }, headers=apostrophe_tenant["headers"])
+        assert resp.status_code == 201, (
+            f"Artifact with mixed special chars title failed: {resp.text}"
+        )
+
+    async def test_relation_between_apostrophe_artifacts(self, async_client, apostrophe_tenant):
+        """Create two artifacts with apostrophes, then a relation between them."""
+        headers = apostrophe_tenant["headers"]
+
+        resp1 = await async_client.post("/artifacts", json={
+            "artifact_type": "document",
+            "title": "What's the Problem?",
+            "content": "Source artifact",
+            "source": "apostrophe-test",
+        }, headers=headers)
+        assert resp1.status_code == 201, f"Source artifact failed: {resp1.text}"
+
+        resp2 = await async_client.post("/artifacts", json={
+            "artifact_type": "document",
+            "title": "Here's the Solution",
+            "content": "Target artifact",
+            "source": "apostrophe-test",
+        }, headers=headers)
+        assert resp2.status_code == 201, f"Target artifact failed: {resp2.text}"
+
+        resp3 = await async_client.post("/relations", json={
+            "source_id": resp1.json()["id"],
+            "target_id": resp2.json()["id"],
+            "relation_type": "derived_from",
+        }, headers=headers)
+        assert resp3.status_code == 201, f"Relation creation failed: {resp3.text}"
+
+
+# =============================================================================
 # Error Handling Tests
 # =============================================================================
 

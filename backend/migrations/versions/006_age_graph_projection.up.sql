@@ -77,16 +77,18 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- -----------------------------------------------------------------------------
--- Helper: Escape a text value for embedding in Cypher string literals
--- Replaces backslash and single-quote to prevent injection
+-- Helper: Produce a Cypher string literal from a text value
+-- Escapes backslash and single-quote, then wraps in single quotes.
+-- quote_literal() MUST NOT be used inside $cypher$ blocks because it emits
+-- PostgreSQL E'…' syntax that the Cypher parser rejects.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION mimirdata.cypher_escape(val TEXT)
+CREATE OR REPLACE FUNCTION mimirdata.cypher_literal(val TEXT)
 RETURNS TEXT AS $$
 BEGIN
     IF val IS NULL THEN
-        RETURN '';
+        RETURN '''''';
     END IF;
-    RETURN replace(replace(val, '\', '\\'), '''', '\''');
+    RETURN '''' || replace(replace(val, '\', '\\'), '''', '\''') || '''';
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
@@ -120,10 +122,10 @@ BEGIN
                 })
             $cypher$) AS (v ag_catalog.agtype)',
             v_graph_name,
-            quote_literal(rec.id::text),
-            quote_literal(rec.artifact_type),
-            quote_literal(mimirdata.cypher_escape(COALESCE(rec.title, ''))),
-            quote_literal(rec.created_at::text)
+            mimirdata.cypher_literal(rec.id::text),
+            mimirdata.cypher_literal(rec.artifact_type),
+            mimirdata.cypher_literal(COALESCE(rec.title, '')),
+            mimirdata.cypher_literal(rec.created_at::text)
         );
         EXECUTE v_cypher;
     END LOOP;
@@ -146,12 +148,12 @@ BEGIN
                 }]->(t)
             $cypher$) AS (e ag_catalog.agtype)',
             v_graph_name,
-            quote_literal(rec.source_id::text),
-            quote_literal(rec.target_id::text),
-            quote_literal(rec.id::text),
-            quote_literal(rec.relation_type),
+            mimirdata.cypher_literal(rec.source_id::text),
+            mimirdata.cypher_literal(rec.target_id::text),
+            mimirdata.cypher_literal(rec.id::text),
+            mimirdata.cypher_literal(rec.relation_type),
             COALESCE(rec.confidence, 0.0)::text,
-            quote_literal(rec.created_at::text)
+            mimirdata.cypher_literal(rec.created_at::text)
         );
         EXECUTE v_cypher;
     END LOOP;
@@ -193,10 +195,10 @@ BEGIN
             })
         $cypher$) AS (v ag_catalog.agtype)',
         v_graph_name,
-        quote_literal(NEW.id::text),
-        quote_literal(NEW.artifact_type),
-        quote_literal(mimirdata.cypher_escape(COALESCE(NEW.title, ''))),
-        quote_literal(NEW.created_at::text)
+        mimirdata.cypher_literal(NEW.id::text),
+        mimirdata.cypher_literal(NEW.artifact_type),
+        mimirdata.cypher_literal(COALESCE(NEW.title, '')),
+        mimirdata.cypher_literal(NEW.created_at::text)
     );
     EXECUTE v_cypher;
 
@@ -219,7 +221,7 @@ BEGIN
             DETACH DELETE a
         $cypher$) AS (v ag_catalog.agtype)',
         v_graph_name,
-        quote_literal(OLD.id::text)
+        mimirdata.cypher_literal(OLD.id::text)
     );
     EXECUTE v_cypher;
 
@@ -247,12 +249,12 @@ BEGIN
             }]->(t)
         $cypher$) AS (e ag_catalog.agtype)',
         v_graph_name,
-        quote_literal(NEW.source_id::text),
-        quote_literal(NEW.target_id::text),
-        quote_literal(NEW.id::text),
-        quote_literal(NEW.relation_type),
+        mimirdata.cypher_literal(NEW.source_id::text),
+        mimirdata.cypher_literal(NEW.target_id::text),
+        mimirdata.cypher_literal(NEW.id::text),
+        mimirdata.cypher_literal(NEW.relation_type),
         COALESCE(NEW.confidence, 0.0)::text,
-        quote_literal(NEW.created_at::text)
+        mimirdata.cypher_literal(NEW.created_at::text)
     );
     EXECUTE v_cypher;
 
@@ -275,9 +277,9 @@ BEGIN
             DELETE r
         $cypher$) AS (e ag_catalog.agtype)',
         v_graph_name,
-        quote_literal(OLD.source_id::text),
-        quote_literal(OLD.id::text),
-        quote_literal(OLD.target_id::text)
+        mimirdata.cypher_literal(OLD.source_id::text),
+        mimirdata.cypher_literal(OLD.id::text),
+        mimirdata.cypher_literal(OLD.target_id::text)
     );
     EXECUTE v_cypher;
 
