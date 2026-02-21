@@ -89,6 +89,11 @@ select = [
 ]
 ignore = [
     "E501",   # line length - handled by formatter
+    "B008",   # function call in defaults - standard FastAPI Query/Header pattern
+    "W291",   # trailing whitespace - occurs in SQL/HTML multiline strings
+    "W293",   # blank line with whitespace - same as W291
+    "SIM102", # nested if → combined if - style preference, not worth risk
+    "SIM105", # try/except/pass → contextlib.suppress - style preference
 ]
 
 [tool.ruff.lint.isort]

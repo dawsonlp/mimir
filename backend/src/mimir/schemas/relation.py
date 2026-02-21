@@ -22,9 +22,9 @@ Relation Types:
 Usage Examples:
     # Create relation with server-generated UUID
     POST /relations {"source_id": "...", "target_id": "...", "relation_type": "derived_from"}
-    
+
     # Create supersedes relation (editorial intent)
-    POST /relations {"source_id": "new-artifact", "target_id": "old-artifact", 
+    POST /relations {"source_id": "new-artifact", "target_id": "old-artifact",
                      "relation_type": "supersedes", "confidence": 1.0}
 """
 
@@ -40,13 +40,17 @@ class RelationBase(BaseModel):
     source_id: UUID = Field(..., description="Source artifact UUID")
     target_id: UUID = Field(..., description="Target artifact UUID")
     relation_type: str = Field(..., description="Type from relation_type vocabulary")
-    confidence: float | None = Field(None, ge=0.0, le=1.0, description="Confidence score 0.0-1.0")
-    metadata: dict | None = Field(default_factory=dict, description="Additional metadata")
+    confidence: float | None = Field(
+        None, ge=0.0, le=1.0, description="Confidence score 0.0-1.0"
+    )
+    metadata: dict | None = Field(
+        default_factory=dict, description="Additional metadata"
+    )
 
 
 class RelationCreate(BaseModel):
     """Schema for creating a new relation.
-    
+
     id is optional - if provided, must be a valid UUID (UUIDv7 preferred).
     If omitted, server generates a UUID.
     """

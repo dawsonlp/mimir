@@ -20,10 +20,10 @@ VECTOR_SCHEMA = "mimir_vectors"
 def _get_distance_ops(metric: str) -> str:
     """Get pgvector operator class for distance metric."""
     return {
-        'cosine': 'vector_cosine_ops',
-        'l2': 'vector_l2_ops',
-        'inner_product': 'vector_ip_ops',
-    }.get(metric, 'vector_cosine_ops')
+        "cosine": "vector_cosine_ops",
+        "l2": "vector_l2_ops",
+        "inner_product": "vector_ip_ops",
+    }.get(metric, "vector_cosine_ops")
 
 
 def _code_to_table_name(code: str) -> str:
@@ -34,17 +34,17 @@ def _code_to_table_name(code: str) -> str:
 async def create_embedding_type(data: EmbeddingTypeCreate) -> EmbeddingTypeResponse:
     """Create a new embedding type and its vector table."""
     table_name = _code_to_table_name(data.code)
-    
+
     async with get_connection() as conn:
         # 1. Insert into embedding_type vocabulary table
         result = await conn.execute(
             f"""
             INSERT INTO {SCHEMA_NAME}.embedding_type
-                (code, display_name, provider, dimensions, distance_metric, 
+                (code, display_name, provider, dimensions, distance_metric,
                  max_tokens, description, vector_table_name)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING code, display_name, provider, dimensions, distance_metric,
-                      max_tokens, description, vector_table_name, is_active, 
+                      max_tokens, description, vector_table_name, is_active,
                       sort_order, created_at
             """,
             (
@@ -59,26 +59,26 @@ async def create_embedding_type(data: EmbeddingTypeCreate) -> EmbeddingTypeRespo
             ),
         )
         row = await result.fetchone()
-        
+
         # 2. Create vector table in mimir_vectors schema
         # Note: Using f-string is safe here because code is validated by regex pattern
         await conn.execute(f"""
             CREATE TABLE {VECTOR_SCHEMA}.{table_name} (
-                embedding_id UUID PRIMARY KEY 
+                embedding_id UUID PRIMARY KEY
                     REFERENCES {SCHEMA_NAME}.embedding(id) ON DELETE CASCADE,
                 embedding vector({data.dimensions}) NOT NULL
             )
         """)
-        
+
         # 3. Create HNSW index
         ops = _get_distance_ops(data.distance_metric)
         await conn.execute(f"""
-            CREATE INDEX idx_{table_name}_hnsw 
-                ON {VECTOR_SCHEMA}.{table_name} 
+            CREATE INDEX idx_{table_name}_hnsw
+                ON {VECTOR_SCHEMA}.{table_name}
                 USING hnsw (embedding {ops})
                 WITH (m = 16, ef_construction = 64)
         """)
-        
+
         await conn.commit()
 
     return _row_to_embedding_type_response(row)
@@ -90,7 +90,7 @@ async def get_embedding_type(code: str) -> EmbeddingTypeResponse | None:
         result = await conn.execute(
             f"""
             SELECT code, display_name, provider, dimensions, distance_metric,
-                   max_tokens, description, vector_table_name, is_active, 
+                   max_tokens, description, vector_table_name, is_active,
                    sort_order, created_at
             FROM {SCHEMA_NAME}.embedding_type
             WHERE code = %s
@@ -126,7 +126,7 @@ async def list_embedding_types(
         result = await conn.execute(
             f"""
             SELECT code, display_name, provider, dimensions, distance_metric,
-                   max_tokens, description, vector_table_name, is_active, 
+                   max_tokens, description, vector_table_name, is_active,
                    sort_order, created_at
             FROM {SCHEMA_NAME}.embedding_type
             {where_sql}

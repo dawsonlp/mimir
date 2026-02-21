@@ -48,17 +48,17 @@ from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Query, Response
 
+from mimir.schemas.graph import (
+    GraphNotFoundError,
+    GraphQueryTimeoutError,
+    GraphScopeTooLargeError,
+)
 from mimir.schemas.search import (
     GraphScope,
     RelationDirection,
     SearchResponse,
     SearchStrategy,
     UnifiedSearchRequest,
-)
-from mimir.schemas.graph import (
-    GraphNotFoundError,
-    GraphQueryTimeoutError,
-    GraphScopeTooLargeError,
 )
 from mimir.services import graph_engine, search_service
 
@@ -153,19 +153,22 @@ def _infer_search_strategy(request: UnifiedSearchRequest) -> SearchStrategy:
         )
 
     # Validate embedding_type requirement for vector-based strategies
-    if strategy in (SearchStrategy.SEMANTIC, SearchStrategy.HYBRID, SearchStrategy.SIMILAR):
-        if not request.embedding_type:
-            param = "query_vector" if has_vector else "similar_to"
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "code": "MISSING_EMBEDDING_TYPE",
-                    "detail": (
-                        f"embedding_type is required for {strategy.value} search "
-                        f"(inferred because you provided {param})."
-                    ),
-                },
-            )
+    if (
+        strategy
+        in (SearchStrategy.SEMANTIC, SearchStrategy.HYBRID, SearchStrategy.SIMILAR)
+        and not request.embedding_type
+    ):
+        param = "query_vector" if has_vector else "similar_to"
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "MISSING_EMBEDDING_TYPE",
+                "detail": (
+                    f"embedding_type is required for {strategy.value} search "
+                    f"(inferred because you provided {param})."
+                ),
+            },
+        )
 
     return strategy
 
@@ -193,9 +196,14 @@ async def _execute_fulltext(
 
     if request.related_to:
         related_ids = await search_service.get_related_artifact_ids(
-            tenant_id, request.related_to, request.relation_type, request.relation_direction
+            tenant_id,
+            request.related_to,
+            request.relation_type,
+            request.relation_direction,
         )
-        filtered = search_service._filter_results_by_relation(response.results, related_ids)
+        filtered = search_service._filter_results_by_relation(
+            response.results, related_ids
+        )
         return SearchResponse(
             results=filtered[: request.limit],
             total=len(filtered),
@@ -225,9 +233,14 @@ async def _execute_semantic(
 
     if request.related_to:
         related_ids = await search_service.get_related_artifact_ids(
-            tenant_id, request.related_to, request.relation_type, request.relation_direction
+            tenant_id,
+            request.related_to,
+            request.relation_type,
+            request.relation_direction,
         )
-        filtered = search_service._filter_results_by_relation(response.results, related_ids)
+        filtered = search_service._filter_results_by_relation(
+            response.results, related_ids
+        )
         return SearchResponse(
             results=filtered[: request.limit],
             total=len(filtered),
@@ -259,9 +272,14 @@ async def _execute_hybrid(
 
     if request.related_to:
         related_ids = await search_service.get_related_artifact_ids(
-            tenant_id, request.related_to, request.relation_type, request.relation_direction
+            tenant_id,
+            request.related_to,
+            request.relation_type,
+            request.relation_direction,
         )
-        filtered = search_service._filter_results_by_relation(response.results, related_ids)
+        filtered = search_service._filter_results_by_relation(
+            response.results, related_ids
+        )
         return SearchResponse(
             results=filtered[: request.limit],
             total=len(filtered),
@@ -292,7 +310,9 @@ async def _execute_similar(
 # =============================================================================
 
 
-def _parse_metadata_filters(metadata_filters_json: str | None) -> dict[str, str | list[str]] | None:
+def _parse_metadata_filters(
+    metadata_filters_json: str | None,
+) -> dict[str, str | list[str]] | None:
     """Parse metadata_filters from JSON string query parameter.
 
     GET endpoints receive metadata_filters as a JSON string since query params
@@ -317,7 +337,7 @@ def _parse_metadata_filters(metadata_filters_json: str | None) -> dict[str, str 
         raise HTTPException(
             status_code=400,
             detail=f"metadata_filters must be valid JSON: {e}",
-        )
+        ) from e
 
     if not isinstance(parsed, dict):
         raise HTTPException(
@@ -391,7 +411,7 @@ async def _resolve_graph_scope(
                 "count": exc.count,
                 "limit": exc.limit,
             },
-        )
+        ) from exc
     except GraphQueryTimeoutError as exc:
         raise HTTPException(
             status_code=504,
@@ -400,7 +420,7 @@ async def _resolve_graph_scope(
                 "detail": str(exc),
                 "timeout_seconds": exc.timeout_seconds,
             },
-        )
+        ) from exc
     except GraphNotFoundError as exc:
         raise HTTPException(
             status_code=404,
@@ -409,7 +429,7 @@ async def _resolve_graph_scope(
                 "detail": str(exc),
                 "graph_name": exc.graph_name,
             },
-        )
+        ) from exc
 
     return {str(r.artifact_id) for r in results}
 
@@ -476,9 +496,7 @@ async def unified_search(
             max_depth=1,
             direction="both",
         )
-        graph_artifact_ids = await _resolve_graph_scope(
-            compat_scope, x_tenant_id
-        )
+        graph_artifact_ids = await _resolve_graph_scope(compat_scope, x_tenant_id)
         # Clear scope_artifact_id so downstream doesn't also apply CTE scoping
         request = request.model_copy(update={"scope_artifact_id": None})
 
@@ -494,13 +512,12 @@ async def unified_search(
         elif strategy == SearchStrategy.SIMILAR:
             response = await _execute_similar(request, x_tenant_id)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Post-filter by graph scope artifact IDs if resolved
     if graph_artifact_ids is not None:
         response.results = [
-            r for r in response.results
-            if str(r.artifact.id) in graph_artifact_ids
+            r for r in response.results if str(r.artifact.id) in graph_artifact_ids
         ]
         response.total = len(response.results)
 
@@ -516,7 +533,9 @@ async def unified_search(
 @router.get("/fulltext", response_model=SearchResponse, deprecated=True)
 async def fulltext_search(
     response: Response,
-    query: str = Query(..., description="Search text - uses PostgreSQL full-text search"),
+    query: str = Query(
+        ..., description="Search text - uses PostgreSQL full-text search"
+    ),
     x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
     artifact_types: list[str] | None = Query(
         None,
@@ -527,7 +546,7 @@ async def fulltext_search(
     metadata_filters: str | None = Query(
         None,
         alias="metadata_filters",
-        description='JSON object for metadata filtering. AND across keys, OR within arrays. '
+        description="JSON object for metadata filtering. AND across keys, OR within arrays. "
         'Example: {"language": "python", "tags": ["api", "core"]}',
     ),
     scope_artifact_id: UUID | None = Query(
@@ -587,7 +606,9 @@ async def fulltext_search(
         related_ids = await search_service.get_related_artifact_ids(
             x_tenant_id, related_to, relation_type, relation_direction
         )
-        filtered = search_service._filter_results_by_relation(search_response.results, related_ids)
+        filtered = search_service._filter_results_by_relation(
+            search_response.results, related_ids
+        )
         return SearchResponse(
             results=filtered[:limit],
             total=len(filtered),

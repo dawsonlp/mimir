@@ -30,14 +30,14 @@ async def create_embedding(
     x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
 ) -> EmbeddingResponse:
     """Create a new embedding for an artifact.
-    
+
     Requires the embedding_type to be registered first via POST /embedding-types.
     The vector dimensions must match the embedding_type definition.
     """
     try:
         return await embedding_service.create_embedding(x_tenant_id, data)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("", response_model=EmbeddingListResponse)
@@ -87,7 +87,7 @@ async def find_similar(
     x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
 ) -> SimilaritySearchResponse:
     """Find similar embeddings by vector.
-    
+
     Requires embedding_type to know which vector table to search.
     You cannot search across different embedding types (different dimensions).
     """
@@ -101,7 +101,7 @@ async def find_similar(
             similarity_threshold=request.similarity_threshold,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # NOTE: DELETE endpoints removed - embeddings are append-only

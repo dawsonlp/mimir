@@ -24,7 +24,7 @@ Actor Types:
 Usage Examples:
     # Query provenance for an artifact
     GET /provenance/artifact/{id}
-    
+
     # Query all provenance events
     GET /provenance?entity_type=artifact&actor_type=api_client
 """
@@ -41,15 +41,19 @@ class ProvenanceEventBase(BaseModel):
     entity_type: str = Field(..., description="Type: artifact, relation, embedding")
     entity_id: UUID = Field(..., description="Entity UUID")
     action: str = Field(default="create", description="Action: create")
-    actor_type: str = Field(..., description="Actor type: user, system, llm, api_client, migration")
+    actor_type: str = Field(
+        ..., description="Actor type: user, system, llm, api_client, migration"
+    )
     actor_id: str | None = Field(None, description="Actor identifier")
     reason: str | None = Field(None, description="Why the action was taken")
-    metadata: dict | None = Field(default_factory=dict, description="Additional details")
+    metadata: dict | None = Field(
+        default_factory=dict, description="Additional details"
+    )
 
 
 class ProvenanceEventCreate(BaseModel):
     """Schema for creating a provenance event (internal use only).
-    
+
     Note: Provenance events are auto-created by the system, not via API.
     """
 

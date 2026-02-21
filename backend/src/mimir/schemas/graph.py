@@ -8,7 +8,6 @@ ContextArtifact / RelationPathItem types for API responses.
 from dataclasses import dataclass, field
 from uuid import UUID
 
-
 # =============================================================================
 # Domain Types
 # =============================================================================
@@ -83,9 +82,7 @@ class GraphQueryTimeoutError(Exception):
 
     def __init__(self, timeout_seconds: int) -> None:
         self.timeout_seconds = timeout_seconds
-        super().__init__(
-            f"Graph query exceeded the {timeout_seconds}s timeout."
-        )
+        super().__init__(f"Graph query exceeded the {timeout_seconds}s timeout.")
 
 
 class GraphNotFoundError(Exception):

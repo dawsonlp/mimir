@@ -51,15 +51,15 @@ async def list_artifact_types(
             WHERE 1=1
         """
         params = []
-        
+
         if active_only:
             query += " AND is_active = true"
         if category:
             query += " AND category = %s"
             params.append(category)
-        
+
         query += " ORDER BY sort_order, code"
-        
+
         result = await conn.execute(query, params)
         rows = await result.fetchall()
 

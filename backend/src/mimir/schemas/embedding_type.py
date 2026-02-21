@@ -15,23 +15,29 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
 # Pattern: lowercase letters/numbers/hyphens, 3-50 chars, must start with letter
-EMBEDDING_TYPE_CODE_PATTERN = re.compile(r'^[a-z][a-z0-9-]{2,49}$')
+EMBEDDING_TYPE_CODE_PATTERN = re.compile(r"^[a-z][a-z0-9-]{2,49}$")
 
-VALID_DISTANCE_METRICS = {'cosine', 'l2', 'inner_product'}
+VALID_DISTANCE_METRICS = {"cosine", "l2", "inner_product"}
 
 
 class EmbeddingTypeCreate(BaseModel):
     """Schema for creating a new embedding type."""
 
-    code: str = Field(..., min_length=3, max_length=50, description="Unique code (lowercase, hyphens)")
+    code: str = Field(
+        ..., min_length=3, max_length=50, description="Unique code (lowercase, hyphens)"
+    )
     display_name: str = Field(..., min_length=1, max_length=100)
-    provider: str = Field(..., min_length=1, max_length=50, description="Provider: ollama, openai, voyage")
+    provider: str = Field(
+        ..., min_length=1, max_length=50, description="Provider: ollama, openai, voyage"
+    )
     dimensions: int = Field(..., gt=0, le=16000, description="Vector dimensions")
-    distance_metric: str = Field(default="cosine", description="Distance metric: cosine, l2, inner_product")
+    distance_metric: str = Field(
+        default="cosine", description="Distance metric: cosine, l2, inner_product"
+    )
     max_tokens: int | None = Field(default=None, gt=0, description="Max input tokens")
     description: str | None = None
 
-    @field_validator('code')
+    @field_validator("code")
     @classmethod
     def validate_code_pattern(cls, v: str) -> str:
         if not EMBEDDING_TYPE_CODE_PATTERN.match(v):
@@ -41,11 +47,13 @@ class EmbeddingTypeCreate(BaseModel):
             )
         return v
 
-    @field_validator('distance_metric')
+    @field_validator("distance_metric")
     @classmethod
     def validate_distance_metric(cls, v: str) -> str:
         if v not in VALID_DISTANCE_METRICS:
-            raise ValueError(f"distance_metric must be one of: {', '.join(VALID_DISTANCE_METRICS)}")
+            raise ValueError(
+                f"distance_metric must be one of: {', '.join(VALID_DISTANCE_METRICS)}"
+            )
         return v
 
 

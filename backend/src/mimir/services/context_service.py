@@ -14,7 +14,7 @@ Graph Traversal:
 - Previous Python-side BFS replaced in Phase 1F of graph engine implementation
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from mimir.schemas.artifact import ArtifactResponse
@@ -27,10 +27,10 @@ from mimir.schemas.context import (
     ContextResponse,
     RelationDirection,
     RelationPathItem,
+    TemporalHint,
     TemporalMode,
 )
-from mimir.services import artifact_service
-from mimir.services import graph_engine
+from mimir.services import artifact_service, graph_engine
 
 SCHEMA_NAME = "mimirdata"
 
@@ -183,8 +183,7 @@ async def _traverse_graph(
     # Filter out excluded artifacts
     if exclusions:
         traversal_results = [
-            r for r in traversal_results
-            if r.artifact_id not in exclusions
+            r for r in traversal_results if r.artifact_id not in exclusions
         ]
 
     if not traversal_results:
@@ -254,7 +253,9 @@ def _get_inclusion_reason(result) -> str:
         if last_step.direction == "outgoing":
             return f"Reached via {last_step.relation_type} (depth {result.depth})"
         else:
-            return f"Reached via incoming {last_step.relation_type} (depth {result.depth})"
+            return (
+                f"Reached via incoming {last_step.relation_type} (depth {result.depth})"
+            )
 
 
 async def _apply_hints(
@@ -311,36 +312,31 @@ async def _apply_hints(
 
 def _apply_temporal_filter(
     artifacts: list[ContextArtifact],
-    temporal: "TemporalHint",
+    temporal: TemporalHint,
 ) -> list[ContextArtifact]:
     """Filter artifacts by temporal hint."""
-    from mimir.schemas.context import TemporalMode
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if temporal.mode == TemporalMode.RECENT:
         if temporal.days_back:
             cutoff = now - timedelta(days=temporal.days_back)
-            return [
-                ca for ca in artifacts
-                if ca.artifact.created_at >= cutoff
-            ]
+            return [ca for ca in artifacts if ca.artifact.created_at >= cutoff]
 
     elif temporal.mode == TemporalMode.HISTORICAL:
         if temporal.days_back:
             cutoff = now - timedelta(days=temporal.days_back)
-            return [
-                ca for ca in artifacts
-                if ca.artifact.created_at < cutoff
-            ]
+            return [ca for ca in artifacts if ca.artifact.created_at < cutoff]
 
     elif temporal.mode == TemporalMode.RANGE:
         filtered = artifacts
         if temporal.start_date:
-            start = datetime.combine(temporal.start_date, datetime.min.time(), tzinfo=timezone.utc)
+            start = datetime.combine(
+                temporal.start_date, datetime.min.time(), tzinfo=UTC
+            )
             filtered = [ca for ca in filtered if ca.artifact.created_at >= start]
         if temporal.end_date:
-            end = datetime.combine(temporal.end_date, datetime.max.time(), tzinfo=timezone.utc)
+            end = datetime.combine(temporal.end_date, datetime.max.time(), tzinfo=UTC)
             filtered = [ca for ca in filtered if ca.artifact.created_at <= end]
         return filtered
 

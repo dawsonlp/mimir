@@ -25,11 +25,11 @@ Related Entities:
 Usage Examples:
     # Document (server generates UUID)
     POST /artifacts {"artifact_type": "document", "title": "Report", "content": "..."}
-    
+
     # Decision with client-generated UUID
-    POST /artifacts {"id": "01926a5c-...", "artifact_type": "decision", 
+    POST /artifacts {"id": "01926a5c-...", "artifact_type": "decision",
                      "title": "Use PostgreSQL", "content": "..."}
-    
+
     # Chunk with position
     POST /artifacts {"artifact_type": "chunk", "parent_artifact_id": "...",
                      "start_offset": 0, "end_offset": 500, "content": "..."}
@@ -45,51 +45,61 @@ class ArtifactBase(BaseModel):
     """Base schema for artifact."""
 
     artifact_type: str = Field(..., description="Type from artifact_type vocabulary")
-    parent_artifact_id: UUID | None = Field(None, description="Parent artifact for hierarchy")
-    
+    parent_artifact_id: UUID | None = Field(
+        None, description="Parent artifact for hierarchy"
+    )
+
     # Positional info (for chunks, quotes, highlights)
     start_offset: int | None = Field(None, description="Character position start")
     end_offset: int | None = Field(None, description="Character position end")
-    position_metadata: dict | None = Field(None, description="Page, line, paragraph info")
-    
+    position_metadata: dict | None = Field(
+        None, description="Page, line, paragraph info"
+    )
+
     # Content
     title: str | None = Field(None, description="Title or label")
     content: str | None = Field(None, description="Main content")
-    
+
     # Source tracking
     source: str | None = Field(None, description="Origin: import, manual, generated")
-    source_system: str | None = Field(None, description="External system: chatgpt, notion")
+    source_system: str | None = Field(
+        None, description="External system: chatgpt, notion"
+    )
     external_id: str | None = Field(None, description="ID in source system")
-    
+
     # Extensible
-    metadata: dict | None = Field(default_factory=dict, description="Additional metadata")
+    metadata: dict | None = Field(
+        default_factory=dict, description="Additional metadata"
+    )
 
 
 class ArtifactCreate(BaseModel):
     """Schema for creating a new artifact.
-    
+
     id is optional - if provided, must be a valid UUID (UUIDv7 preferred).
     If omitted, server generates a UUID.
     """
 
-    id: UUID | None = Field(None, description="Optional client-generated UUID (UUIDv7 preferred)")
+    id: UUID | None = Field(
+        None, description="Optional client-generated UUID (UUIDv7 preferred)"
+    )
     artifact_type: str = Field(..., min_length=1, max_length=50)
     parent_artifact_id: UUID | None = None
-    
+
     # Positional
     start_offset: int | None = None
     end_offset: int | None = None
     position_metadata: dict | None = None
-    
+
     # Content
     title: str | None = None
     content: str | None = None
-    
+
     # Source
     source: str | None = None
     source_system: str | None = None
     external_id: str | None = None
-    
+
     metadata: dict | None = None
 
 

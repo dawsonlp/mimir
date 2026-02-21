@@ -27,9 +27,7 @@ async def _configure_connection(conn) -> None:
     IDLE state (psycopg pool rejects connections left in INTRANS).
     """
     await conn.execute("LOAD 'age'")
-    await conn.execute(
-        "SET search_path = ag_catalog, mimirdata, public"
-    )
+    await conn.execute("SET search_path = ag_catalog, mimirdata, public")
     await conn.commit()
 
 
@@ -109,9 +107,7 @@ async def health_check() -> dict:
             pgvector_enabled = pgvector_row is not None
 
             # Check AGE extension
-            await cur.execute(
-                "SELECT extname FROM pg_extension WHERE extname = 'age'"
-            )
+            await cur.execute("SELECT extname FROM pg_extension WHERE extname = 'age'")
             age_row = await cur.fetchone()
             age_enabled = age_row is not None
 

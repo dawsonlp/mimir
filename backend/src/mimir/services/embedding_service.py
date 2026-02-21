@@ -43,7 +43,7 @@ async def _get_embedding_type_info(embedding_type: str) -> tuple[int, str] | Non
 
 async def create_embedding(tenant_id: int, data: EmbeddingCreate) -> EmbeddingResponse:
     """Create a new embedding.
-    
+
     1. Validates embedding_type exists and is active
     2. Validates vector dimensions match embedding_type
     3. Inserts to master embedding table
@@ -52,16 +52,18 @@ async def create_embedding(tenant_id: int, data: EmbeddingCreate) -> EmbeddingRe
     # Get embedding type info
     type_info = await _get_embedding_type_info(data.embedding_type)
     if not type_info:
-        raise ValueError(f"Embedding type '{data.embedding_type}' not found or inactive")
-    
+        raise ValueError(
+            f"Embedding type '{data.embedding_type}' not found or inactive"
+        )
+
     expected_dims, vector_table = type_info
     actual_dims = len(data.embedding)
-    
+
     if actual_dims != expected_dims:
         raise ValueError(
             f"Embedding dimensions mismatch: {data.embedding_type} expects {expected_dims}, got {actual_dims}"
         )
-    
+
     embedding_id = uuid4()
     vector_str = "[" + ",".join(str(v) for v in data.embedding) + "]"
 
@@ -83,7 +85,7 @@ async def create_embedding(tenant_id: int, data: EmbeddingCreate) -> EmbeddingRe
             ),
         )
         row = await result.fetchone()
-        
+
         # Insert vector to child table
         await conn.execute(
             f"""
@@ -93,7 +95,7 @@ async def create_embedding(tenant_id: int, data: EmbeddingCreate) -> EmbeddingRe
             """,
             (str(embedding_id), vector_str),
         )
-        
+
         await conn.commit()
 
     embedding = _row_to_embedding_response(row)
@@ -105,7 +107,10 @@ async def create_embedding(tenant_id: int, data: EmbeddingCreate) -> EmbeddingRe
         entity_id=embedding.id,
         action="create",
         actor_type="api_client",
-        metadata={"embedding_type": data.embedding_type, "artifact_id": str(data.artifact_id)},
+        metadata={
+            "embedding_type": data.embedding_type,
+            "artifact_id": str(data.artifact_id),
+        },
     )
 
     return embedding
@@ -145,11 +150,11 @@ async def get_embedding(
                     (str(embedding_id),),
                 )
                 vec_row = await vec_result.fetchone()
-            
+
             if vec_row:
                 vector = _parse_vector_string(vec_row[0])
                 return _row_to_embedding_with_vector(row, vector)
-    
+
     return _row_to_embedding_response(row)
 
 
@@ -240,13 +245,13 @@ async def find_similar(
     type_info = await _get_embedding_type_info(embedding_type)
     if not type_info:
         raise ValueError(f"Embedding type '{embedding_type}' not found or inactive")
-    
+
     expected_dims, vector_table = type_info
     if len(query_vector) != expected_dims:
         raise ValueError(
             f"Query vector dimensions mismatch: {embedding_type} expects {expected_dims}, got {len(query_vector)}"
         )
-    
+
     vector_str = "[" + ",".join(str(v) for v in query_vector) + "]"
 
     async with get_connection() as conn:
@@ -282,12 +287,14 @@ async def find_similar(
     for row in rows:
         similarity = row[3]
         if similarity >= similarity_threshold:
-            results.append(SimilarityResult(
-                embedding_id=UUID(row[0]) if isinstance(row[0], str) else row[0],
-                artifact_id=UUID(row[1]) if isinstance(row[1], str) else row[1],
-                embedding_type=row[2],
-                similarity=similarity,
-            ))
+            results.append(
+                SimilarityResult(
+                    embedding_id=UUID(row[0]) if isinstance(row[0], str) else row[0],
+                    artifact_id=UUID(row[1]) if isinstance(row[1], str) else row[1],
+                    embedding_type=row[2],
+                    similarity=similarity,
+                )
+            )
 
     return SimilaritySearchResponse(results=results, total=len(results))
 
@@ -301,7 +308,7 @@ async def check_embedding_exists(
     async with get_connection() as conn:
         result = await conn.execute(
             f"""
-            SELECT 1 FROM {SCHEMA_NAME}.embedding 
+            SELECT 1 FROM {SCHEMA_NAME}.embedding
             WHERE tenant_id = %s AND artifact_id = %s AND embedding_type = %s
             """,
             (tenant_id, str(artifact_id), embedding_type),
@@ -323,7 +330,9 @@ def _row_to_embedding_response(row: tuple) -> EmbeddingResponse:
     )
 
 
-def _row_to_embedding_with_vector(row: tuple, vector: list[float]) -> EmbeddingWithVectorResponse:
+def _row_to_embedding_with_vector(
+    row: tuple, vector: list[float]
+) -> EmbeddingWithVectorResponse:
     """Convert database row with vector to EmbeddingWithVectorResponse."""
     return EmbeddingWithVectorResponse(
         id=UUID(row[0]) if isinstance(row[0], str) else row[0],

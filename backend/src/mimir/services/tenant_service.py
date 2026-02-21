@@ -4,6 +4,8 @@ Append-only content model. Tenant deletion via FK CASCADE removes all
 associated artifacts, relations, embeddings, and provenance events.
 """
 
+import contextlib
+
 from mimir.database import get_connection
 from mimir.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
 
@@ -155,13 +157,11 @@ async def delete_tenant(tenant_id: int) -> bool:
         if deleted:
             # Drop the AGE graph (now empty after cascade trigger cleanup)
             graph_name = f"mimir_tenant_{tenant_id}"
-            try:
+            with contextlib.suppress(Exception):
                 await conn.execute(
                     "SELECT ag_catalog.drop_graph(%s, true)",
                     (graph_name,),
                 )
-            except Exception:
-                pass  # Graph may not exist; safe to ignore
 
         await conn.commit()
 

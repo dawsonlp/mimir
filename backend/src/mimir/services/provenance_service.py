@@ -34,7 +34,7 @@ async def log_action(
 ) -> ProvenanceEventResponse:
     """Log a provenance event (internal use - not exposed via API)."""
     event_id = uuid4()
-    
+
     async with get_connection() as conn:
         result = await conn.execute(
             f"""
@@ -147,7 +147,9 @@ async def list_provenance_events(
 
     items = [_row_to_provenance_response(row) for row in rows]
 
-    return ProvenanceEventListResponse(items=items, total=total, limit=limit, offset=offset)
+    return ProvenanceEventListResponse(
+        items=items, total=total, limit=limit, offset=offset
+    )
 
 
 async def get_artifact_history(

@@ -154,7 +154,6 @@ class UnifiedSearchRequest(BaseModel):
         description="Pagination offset. Deep offsets degrade on HNSW indexes.",
     )
 
-
     @model_validator(mode="after")
     def validate_scope_exclusivity(self) -> "UnifiedSearchRequest":
         """Ensure scope_artifact_id and graph_scope are mutually exclusive."""

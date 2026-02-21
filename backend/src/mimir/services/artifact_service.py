@@ -10,7 +10,6 @@ V2 Changes:
 """
 
 import hashlib
-from datetime import datetime
 from uuid import UUID, uuid4
 
 from psycopg import errors as pg_errors
@@ -44,7 +43,9 @@ def _hash_content(content: str | None) -> str | None:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-async def create_artifact(tenant_id: int, data: ArtifactCreate) -> ArtifactResponse | None:
+async def create_artifact(
+    tenant_id: int, data: ArtifactCreate
+) -> ArtifactResponse | None:
     """Create a new artifact.
 
     If data.id is provided, uses that UUID. Otherwise generates one.
@@ -205,9 +206,7 @@ async def list_artifacts(
 
     items = [_row_to_artifact_response(row) for row in rows]
 
-    return ArtifactListResponse(
-        items=items, total=total, limit=limit, offset=offset
-    )
+    return ArtifactListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 async def _get_artifacts_by_ids(
@@ -237,7 +236,9 @@ async def _get_artifacts_by_ids(
 
     # Build lookup by ID for ordering
     artifacts_by_id = {
-        (UUID(row[0]) if isinstance(row[0], str) else row[0]): _row_to_artifact_response(row)
+        (
+            UUID(row[0]) if isinstance(row[0], str) else row[0]
+        ): _row_to_artifact_response(row)
         for row in rows
     }
 
@@ -252,9 +253,7 @@ async def _get_artifacts_by_ids(
     )
 
 
-async def get_children(
-    artifact_id: UUID, tenant_id: int
-) -> list[ArtifactResponse]:
+async def get_children(artifact_id: UUID, tenant_id: int) -> list[ArtifactResponse]:
     """Get all child artifacts (for positional types like chunks, quotes)."""
     async with get_connection() as conn:
         result = await conn.execute(
@@ -290,7 +289,11 @@ def _row_to_artifact_response(row: tuple) -> ArtifactResponse:
         id=UUID(row[0]) if isinstance(row[0], str) else row[0],
         tenant_id=row[1],
         artifact_type=row[2],
-        parent_artifact_id=UUID(row[3]) if isinstance(row[3], str) else row[3] if row[3] else None,
+        parent_artifact_id=UUID(row[3])
+        if isinstance(row[3], str)
+        else row[3]
+        if row[3]
+        else None,
         start_offset=row[4],
         end_offset=row[5],
         position_metadata=row[6],

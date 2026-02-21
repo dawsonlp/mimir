@@ -27,9 +27,11 @@ from mimir.services import provenance_service
 SCHEMA_NAME = "mimirdata"
 
 
-async def create_relation(tenant_id: int, data: RelationCreate) -> RelationResponse | None:
+async def create_relation(
+    tenant_id: int, data: RelationCreate
+) -> RelationResponse | None:
     """Create a new relation.
-    
+
     If data.id is provided, uses that UUID. Otherwise generates one.
     Returns None if duplicate relation exists (caller should return 409).
     """

@@ -77,7 +77,7 @@ async def get_related_artifact_ids(
         result = await conn.execute(
             f"""
             SELECT DISTINCT
-                CASE 
+                CASE
                     WHEN source_id = %s THEN target_id
                     ELSE source_id
                 END as related_id
@@ -219,7 +219,9 @@ async def _resolve_scope_descendants(
     return {UUID(row[0]) if isinstance(row[0], str) else row[0] for row in rows}
 
 
-def _build_scope_filter(descendant_ids: set[UUID], params: list, alias: str = "") -> str:
+def _build_scope_filter(
+    descendant_ids: set[UUID], params: list, alias: str = ""
+) -> str:
     """Build SQL WHERE clause fragment to restrict results to a set of artifact IDs.
 
     Args:
@@ -264,7 +266,9 @@ async def fulltext_search(
             return SearchResponse(results=[], total=0, query=query)
 
     async with get_connection() as conn:
-        where_clause = "WHERE tenant_id = %s AND search_vector @@ plainto_tsquery('english', %s)"
+        where_clause = (
+            "WHERE tenant_id = %s AND search_vector @@ plainto_tsquery('english', %s)"
+        )
         params: list = [tenant_id, query]
 
         if artifact_types:
@@ -493,7 +497,9 @@ async def hybrid_search(
     # Build results
     results = []
     for i, (artifact, score) in enumerate(page):
-        results.append(SearchResult(artifact=artifact, score=score, rank=offset + i + 1))
+        results.append(
+            SearchResult(artifact=artifact, score=score, rank=offset + i + 1)
+        )
 
     return SearchResponse(results=results, total=total, query=query)
 
@@ -524,7 +530,7 @@ async def similar_artifacts(
         # Get the artifact's embedding from the vector table
         result = await conn.execute(
             f"""
-            SELECT v.embedding::text 
+            SELECT v.embedding::text
             FROM {SCHEMA_NAME}.embedding e
             JOIN {VECTOR_SCHEMA}.{vector_table} v ON v.embedding_id = e.id
             WHERE e.tenant_id = %s AND e.artifact_id = %s AND e.embedding_type = %s

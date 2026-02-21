@@ -69,9 +69,7 @@ async def _execute_cypher(
 
     async with get_connection() as conn:
         try:
-            await conn.execute(
-                f"SET LOCAL statement_timeout = '{timeout}s'"
-            )
+            await conn.execute(f"SET LOCAL statement_timeout = '{timeout}s'")
             # AGE requires graph name as a SQL string literal (not a parameter).
             # graph_name is always 'mimir_tenant_N' — controlled, safe value.
             # The Cypher query is also built by our pure functions, not user input.
@@ -83,8 +81,8 @@ async def _execute_cypher(
             rows = await result.fetchall()
             return rows
 
-        except psycopg.errors.QueryCanceled:
-            raise GraphQueryTimeoutError(timeout)
+        except psycopg.errors.QueryCanceled as exc:
+            raise GraphQueryTimeoutError(timeout) from exc
 
         except psycopg.errors.InvalidParameterValue as exc:
             # AGE raises InvalidParameterValue when graph doesn't exist
@@ -158,7 +156,9 @@ def _build_find_paths_cypher(
     )
 
 
-def _extract_path_steps(path_elements: list[dict], start_mimir_id: str) -> list[PathStep]:
+def _extract_path_steps(
+    path_elements: list[dict], start_mimir_id: str
+) -> list[PathStep]:
     """Extract PathStep list from a parsed AGE path.
 
     A path from AGE is [vertex, edge, vertex, edge, vertex, ...].
@@ -330,7 +330,10 @@ async def traverse(
         depth = len(steps)
 
         # Keep shortest path to each artifact
-        if end_artifact_id not in seen_artifacts or depth < seen_artifacts[end_artifact_id].depth:
+        if (
+            end_artifact_id not in seen_artifacts
+            or depth < seen_artifacts[end_artifact_id].depth
+        ):
             seen_artifacts[end_artifact_id] = TraversalResult(
                 artifact_id=end_artifact_id,
                 depth=depth,

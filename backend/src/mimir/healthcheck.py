@@ -4,6 +4,7 @@
 Run as: python -m mimir.healthcheck
 Returns exit code 0 if healthy, 1 if unhealthy.
 """
+
 import json
 import sys
 import urllib.request

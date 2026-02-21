@@ -10,7 +10,7 @@ V2.1 Changes:
 Usage Examples:
     # First, register an embedding type (creates vector table):
     POST /embedding-types {"code": "nomic-embed-text", "provider": "ollama", "dimensions": 768}
-    
+
     # Then create embedding:
     POST /embeddings {"artifact_id": "...", "embedding_type": "nomic-embed-text", "embedding": [...]}
 """
@@ -26,10 +26,10 @@ class EmbeddingCreate(BaseModel):
 
     artifact_id: UUID = Field(..., description="Artifact UUID")
     embedding_type: str = Field(
-        ..., 
-        min_length=3, 
+        ...,
+        min_length=3,
         max_length=50,
-        description="Embedding type code (must be registered first)"
+        description="Embedding type code (must be registered first)",
     )
     embedding: list[float] = Field(..., description="Vector values")
     metadata: dict | None = None
@@ -75,13 +75,12 @@ class SimilaritySearchRequest(BaseModel):
         ...,
         min_length=3,
         max_length=50,
-        description="Embedding type code (determines which vector table to search)"
+        description="Embedding type code (determines which vector table to search)",
     )
     limit: int = Field(default=20, ge=1, le=100)
     similarity_threshold: float = Field(default=0.0, ge=0.0, le=1.0)
     artifact_types: list[str] | None = Field(
-        default=None,
-        description="Filter by artifact types"
+        default=None, description="Filter by artifact types"
     )
 
 

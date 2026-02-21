@@ -10,7 +10,7 @@ V2 Changes:
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, Query
 
 from mimir.schemas.provenance import (
     ProvenanceEventListResponse,
@@ -26,17 +26,35 @@ async def list_provenance_events(
     x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    entity_type: str | None = Query(None, description="Filter by entity type: artifact, relation, embedding"),
+    entity_type: str | None = Query(
+        None, description="Filter by entity type: artifact, relation, embedding"
+    ),
     entity_id: UUID | None = Query(None, description="Filter by entity UUID"),
     action: str | None = Query(None, description="Filter by action: create"),
-    actor_type: str | None = Query(None, description="Filter by actor type: user, system, llm, api_client, migration"),
+    actor_type: str | None = Query(
+        None,
+        description="Filter by actor type: user, system, llm, api_client, migration",
+    ),
     actor_id: str | None = Query(None, description="Filter by actor ID"),
-    after: datetime | None = Query(None, description="Filter events after this timestamp"),
-    before: datetime | None = Query(None, description="Filter events before this timestamp"),
+    after: datetime | None = Query(
+        None, description="Filter events after this timestamp"
+    ),
+    before: datetime | None = Query(
+        None, description="Filter events before this timestamp"
+    ),
 ) -> ProvenanceEventListResponse:
     """List provenance events with optional filtering."""
     return await provenance_service.list_provenance_events(
-        x_tenant_id, limit, offset, entity_type, entity_id, action, actor_type, actor_id, after, before
+        x_tenant_id,
+        limit,
+        offset,
+        entity_type,
+        entity_id,
+        action,
+        actor_type,
+        actor_id,
+        after,
+        before,
     )
 
 

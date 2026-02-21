@@ -11,8 +11,12 @@ class ArtifactTypeBase(BaseModel):
     code: str = Field(..., description="Unique code for the artifact type")
     display_name: str = Field(..., description="Human-readable name")
     description: str | None = Field(None, description="Description of this type")
-    category: str | None = Field(None, description="Category: content, positional, derived")
-    is_active: bool = Field(True, description="Whether this type can be used for new artifacts")
+    category: str | None = Field(
+        None, description="Category: content, positional, derived"
+    )
+    is_active: bool = Field(
+        True, description="Whether this type can be used for new artifacts"
+    )
     sort_order: int = Field(0, description="Display order in lists")
 
 

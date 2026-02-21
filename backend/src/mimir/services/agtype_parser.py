@@ -54,9 +54,7 @@ def parse_agtype_value(raw: str | None) -> dict | str | int | float | bool | Non
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError as exc:
-        raise ValueError(
-            f"Failed to parse agtype value: {raw!r}"
-        ) from exc
+        raise ValueError(f"Failed to parse agtype value: {raw!r}") from exc
 
 
 def parse_agtype_collection(raw: str | None) -> list[dict]:
@@ -94,9 +92,7 @@ def parse_agtype_collection(raw: str | None) -> list[dict]:
     try:
         result = json.loads(cleaned)
     except json.JSONDecodeError as exc:
-        raise ValueError(
-            f"Failed to parse agtype collection: {raw!r}"
-        ) from exc
+        raise ValueError(f"Failed to parse agtype collection: {raw!r}") from exc
 
     if not isinstance(result, list):
         raise ValueError(

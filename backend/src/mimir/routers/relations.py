@@ -28,7 +28,7 @@ async def create_relation(
     x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
 ) -> RelationResponse:
     """Create a new relation.
-    
+
     If `id` is provided in the request body, uses that UUID.
     If omitted, server generates a UUID.
     Returns 409 Conflict if the relation already exists (same source, target, type).
@@ -78,8 +78,12 @@ async def get_relation(
 async def get_artifact_relations(
     artifact_id: UUID,
     x_tenant_id: int = Header(..., alias="X-Tenant-ID"),
-    as_source: bool = Query(True, description="Include relations where artifact is source"),
-    as_target: bool = Query(True, description="Include relations where artifact is target"),
+    as_source: bool = Query(
+        True, description="Include relations where artifact is source"
+    ),
+    as_target: bool = Query(
+        True, description="Include relations where artifact is target"
+    ),
     relation_type: str | None = Query(None),
 ) -> list[RelationResponse]:
     """Get all relations for an artifact."""

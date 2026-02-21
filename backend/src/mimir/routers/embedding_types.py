@@ -20,7 +20,7 @@ async def create_embedding_type(
     data: EmbeddingTypeCreate,
 ) -> EmbeddingTypeResponse:
     """Create a new embedding type and its vector table.
-    
+
     This operation:
     1. Creates an embedding_type record
     2. Creates a vector table in mimir_vectors schema
@@ -30,7 +30,9 @@ async def create_embedding_type(
         return await embedding_type_service.create_embedding_type(data)
     except Exception as e:
         if "duplicate key" in str(e).lower():
-            raise HTTPException(status_code=409, detail=f"Embedding type '{data.code}' already exists")
+            raise HTTPException(
+                status_code=409, detail=f"Embedding type '{data.code}' already exists"
+            ) from e
         raise
 
 
@@ -59,7 +61,7 @@ async def deactivate_embedding_type(
     code: str,
 ) -> None:
     """Soft delete (deactivate) an embedding type.
-    
+
     Note: Does not drop the vector table - embeddings remain accessible.
     """
     success = await embedding_type_service.deactivate_embedding_type(code)

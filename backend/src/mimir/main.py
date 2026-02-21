@@ -1,8 +1,7 @@
 """Mímir V5 - FastAPI application."""
 
-from contextlib import asynccontextmanager
-
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,7 +38,7 @@ Mímir stores and retrieves knowledge using a unified artifact model with semant
 TENANT → owns → ARTIFACT → has → ARTIFACT_VERSION
                    │
                    ├── connected via → RELATION
-                   ├── searchable via → EMBEDDING  
+                   ├── searchable via → EMBEDDING
                    └── tracked by → PROVENANCE_EVENT
 ```
 
@@ -317,7 +316,7 @@ LANDING_PAGE_TEMPLATE = """
         <span class="version">v{version}</span>
         <p class="tagline">Knowledge Graph &amp; Semantic Memory API</p>
     </div>
-    
+
     <div class="cards">
         <a href="/docs" class="card">
             <div class="card-icon">📚</div>
@@ -325,21 +324,21 @@ LANDING_PAGE_TEMPLATE = """
             <p>Interactive API explorer. Try out requests directly in your browser with full request/response details.</p>
             <span class="path">/docs</span>
         </a>
-        
+
         <a href="/redoc" class="card">
             <div class="card-icon">📖</div>
             <h2>ReDoc</h2>
             <p>Clean, readable API documentation with detailed schemas and examples.</p>
             <span class="path">/redoc</span>
         </a>
-        
+
         <a href="/openapi.json" class="card">
             <div class="card-icon">📋</div>
             <h2>OpenAPI Spec</h2>
             <p>Raw OpenAPI 3.0 specification in JSON format for code generation and tooling.</p>
             <span class="path">/openapi.json</span>
         </a>
-        
+
         <a href="/health" class="card">
             <div class="card-icon">💚</div>
             <h2>Health Check</h2>
@@ -347,12 +346,12 @@ LANDING_PAGE_TEMPLATE = """
             <span class="path">/health</span>
         </a>
     </div>
-    
+
     <div class="status">
         <span class="status-dot"></span>
         API is running
     </div>
-    
+
     <footer>
         Mímir — Norse god of wisdom and knowledge
     </footer>

@@ -23,18 +23,26 @@ class TenantBase(BaseModel):
 
     shortname: str = Field(..., description="Short unique identifier")
     name: str = Field(..., description="Display name")
-    tenant_type: str = Field("environment", description="Type: environment, project, experiment")
+    tenant_type: str = Field(
+        "environment", description="Type: environment, project, experiment"
+    )
     description: str | None = Field(None, description="Description")
     is_active: bool = Field(True, description="Whether tenant is active")
-    metadata: dict | None = Field(default_factory=dict, description="Additional metadata")
+    metadata: dict | None = Field(
+        default_factory=dict, description="Additional metadata"
+    )
 
 
 class TenantCreate(BaseModel):
     """Schema for creating a new tenant."""
 
-    shortname: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-z][a-z0-9_-]*$")
+    shortname: str = Field(
+        ..., min_length=1, max_length=50, pattern=r"^[a-z][a-z0-9_-]*$"
+    )
     name: str = Field(..., min_length=1, max_length=200)
-    tenant_type: str = Field("environment", pattern=r"^(environment|project|experiment)$")
+    tenant_type: str = Field(
+        "environment", pattern=r"^(environment|project|experiment)$"
+    )
     description: str | None = None
     is_active: bool = True
     metadata: dict | None = None
