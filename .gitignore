@@ -78,3 +78,8 @@ data/
 
 # Communications (inter-team correspondence, not part of codebase)
 comms/
+
+# Client build artifacts
+clients/python/.venv/
+clients/python/dist/
+clients/python/*.egg-info/
