@@ -147,12 +147,18 @@ class MimirClient:
 
     def get_artifact(self, artifact_id: str) -> dict:
         """Get artifact by ID."""
-        r = self.client.get(f"{self.base_url}/artifacts/{artifact_id}", headers=self._headers())
+        r = self.client.get(
+            f"{self.base_url}/artifacts/{artifact_id}", headers=self._headers()
+        )
         r.raise_for_status()
         return r.json()
 
     def create_relation(
-        self, source_id: str, target_id: str, relation_type: str, confidence: float = 1.0
+        self,
+        source_id: str,
+        target_id: str,
+        relation_type: str,
+        confidence: float = 1.0,
     ) -> dict:
         """Create a relation between artifacts."""
         r = self.client.post(
@@ -191,7 +197,11 @@ class MimirClient:
         r = self.client.post(
             f"{self.base_url}/embeddings/similar",
             headers=self._headers(),
-            json={"query_vector": query_vector, "embedding_type": embedding_type, "limit": limit},
+            json={
+                "query_vector": query_vector,
+                "embedding_type": embedding_type,
+                "limit": limit,
+            },
         )
         r.raise_for_status()
         return r.json()
@@ -249,7 +259,10 @@ class TestBootstrapWorkflow:
         # Step 3: Create Embedding Type
         print_section("Step 3: Create Embedding Type")
         emb_type = self.mimir.create_embedding_type(
-            code="nomic", display_name="Nomic", provider="ollama", dimensions=EMBED_DIMENSIONS
+            code="nomic",
+            display_name="Nomic",
+            provider="ollama",
+            dimensions=EMBED_DIMENSIONS,
         )
         print(f"✓ Embedding type: {emb_type['code']} ({emb_type['dimensions']} dims)")
 
@@ -290,16 +303,20 @@ Use HNSW indexes for fast retrieval."""
         print_section("Step 5: Verify Document Retrieval")
         retrieved_doc1 = self.mimir.get_artifact(doc1["id"])
         assert retrieved_doc1["content"] is not None, "Retrieved doc1 content is null!"
-        print(f"✓ Document 1 content retrieved ({len(retrieved_doc1['content'])} chars)")
+        print(
+            f"✓ Document 1 content retrieved ({len(retrieved_doc1['content'])} chars)"
+        )
 
         retrieved_doc2 = self.mimir.get_artifact(doc2["id"])
         assert retrieved_doc2["content"] is not None, "Retrieved doc2 content is null!"
-        print(f"✓ Document 2 content retrieved ({len(retrieved_doc2['content'])} chars)")
+        print(
+            f"✓ Document 2 content retrieved ({len(retrieved_doc2['content'])} chars)"
+        )
 
         # Step 6: Generate Analysis with LLM
         print_section("Step 6: Generate Analysis with Ollama")
         analysis_prompt = f"""Analyze this document briefly (under 100 words):
-{retrieved_doc1['content']}
+{retrieved_doc1["content"]}
 
 Analysis:"""
         print(f"  Calling Ollama ({CHAT_MODEL})...")
@@ -352,12 +369,16 @@ Analysis:"""
         if results["results"]:
             top_id = results["results"][0]["artifact_id"]
             ctx = self.mimir.get_context(top_id)
-            print(f"✓ Context for {top_id[:8]}...: {len(ctx.get('relations', []))} relations")
+            print(
+                f"✓ Context for {top_id[:8]}...: {len(ctx.get('relations', []))} relations"
+            )
 
         # Step 12: LLM Conversation
         print_section("Step 12: LLM Conversation")
         context_str = f"Doc1: {retrieved_doc1['content'][:300]}...\nDoc2: {retrieved_doc2['content'][:300]}..."
-        question = "What are the top 3 things to do for PostgreSQL vector search performance?"
+        question = (
+            "What are the top 3 things to do for PostgreSQL vector search performance?"
+        )
         messages = [
             {"role": "system", "content": "You are a database expert."},
             {"role": "user", "content": f"{context_str}\n\nQuestion: {question}"},
@@ -389,7 +410,9 @@ Analysis:"""
         print(f"  2. {doc2['title']} ({doc2['id'][:8]}...)")
         print(f"  3. {analysis['title']} ({analysis['id'][:8]}...)")
         print(f"  4. {conversation['title']} ({conversation['id'][:8]}...)")
-        print("\nRelations: Analysis derived_from Doc1, Doc2 refs Doc1, Conversation derived_from all")
+        print(
+            "\nRelations: Analysis derived_from Doc1, Doc2 refs Doc1, Conversation derived_from all"
+        )
         print(f"\nEmbeddings: 3 vectors ({EMBED_DIMENSIONS} dims)")
         print("\n" + "=" * 60)
         print(" CONVERSATION")

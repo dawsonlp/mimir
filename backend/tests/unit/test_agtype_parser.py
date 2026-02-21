@@ -8,7 +8,6 @@ import pytest
 
 from mimir.services.agtype_parser import parse_agtype_collection, parse_agtype_value
 
-
 # =============================================================================
 # parse_agtype_value — scalar types
 # =============================================================================

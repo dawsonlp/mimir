@@ -3,7 +3,7 @@ name = "mimir"
 # SINGLE SOURCE OF TRUTH for version.
 # All other files (__init__.py, config.py, main.py) read from here via importlib.metadata.
 # To release: bump this version, commit, tag (vX.Y.Z), push. CI builds and deploys automatically.
-version = "5.0.1"
+version = "5.0.3"
 description = "Mímir - Durable Memory & Meta-Analysis Storage System"
 authors = [{name = "Development Team"}]
 readme = "README.md"
@@ -90,10 +90,12 @@ select = [
 ignore = [
     "E501",   # line length - handled by formatter
     "B008",   # function call in defaults - standard FastAPI Query/Header pattern
+    "B017",   # pytest.raises(Exception) - acceptable in validation tests
     "W291",   # trailing whitespace - occurs in SQL/HTML multiline strings
     "W293",   # blank line with whitespace - same as W291
     "SIM102", # nested if → combined if - style preference, not worth risk
     "SIM105", # try/except/pass → contextlib.suppress - style preference
+    "UP042",  # str+Enum → StrEnum - may affect Pydantic serialization
 ]
 
 [tool.ruff.lint.isort]

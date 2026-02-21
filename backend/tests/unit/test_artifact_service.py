@@ -5,14 +5,12 @@ Tests focus on content hashing - a pure function with edge cases
 that matter for deduplication behavior.
 """
 
-import pytest
-
 from mimir.services.artifact_service import _hash_content
 
 
 class TestContentHashing:
     """Test _hash_content helper function for deduplication support.
-    
+
     Content hashing is critical for detecting duplicates. These tests
     verify edge cases that could cause false duplicates or missed matches.
     """
@@ -42,7 +40,7 @@ class TestContentHashing:
 
     def test_whitespace_matters(self):
         """Whitespace differences should produce different hashes.
-        
+
         Important: prevents false deduplication of trimmed vs untrimmed content.
         """
         hash1 = _hash_content("test")

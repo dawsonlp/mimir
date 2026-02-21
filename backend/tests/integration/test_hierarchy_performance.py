@@ -105,7 +105,14 @@ def _create_hierarchy(conn, tenant_id: int) -> dict:
             INSERT INTO {SCHEMA}.artifact (id, tenant_id, artifact_type, parent_artifact_id, title, content)
             VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            (str(file_id), tenant_id, file_type, str(project_id), f"File {i}", f"File content {i}"),
+            (
+                str(file_id),
+                tenant_id,
+                file_type,
+                str(project_id),
+                f"File {i}",
+                f"File content {i}",
+            ),
         )
 
     # Level 3: Chunks (~19 per file = ~190 chunks)
@@ -119,7 +126,14 @@ def _create_hierarchy(conn, tenant_id: int) -> dict:
                 INSERT INTO {SCHEMA}.artifact (id, tenant_id, artifact_type, parent_artifact_id, title, content)
                 VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (str(chunk_id), tenant_id, chunk_type, str(file_id), f"Chunk {j}", f"Chunk content {j}"),
+                (
+                    str(chunk_id),
+                    tenant_id,
+                    chunk_type,
+                    str(file_id),
+                    f"Chunk {j}",
+                    f"Chunk content {j}",
+                ),
             )
 
     conn.commit()
@@ -142,7 +156,9 @@ def _cleanup_hierarchy(conn, tenant_id: int):
     conn.commit()
 
 
-def _run_recursive_cte(conn, tenant_id: int, scope_id, explain: bool = False) -> tuple[list, float]:
+def _run_recursive_cte(
+    conn, tenant_id: int, scope_id, explain: bool = False
+) -> tuple[list, float]:
     """Run the recursive CTE and time it.
 
     Returns (list of descendant IDs, elapsed_ms).
@@ -212,21 +228,27 @@ class TestHierarchyScopingPerformance:
 
     def test_cte_returns_all_descendants(self, db_conn, test_tenant_id, hierarchy):
         """Recursive CTE from project root should return all 201 artifacts."""
-        ids, elapsed_ms = _run_recursive_cte(db_conn, test_tenant_id, hierarchy["project_id"])
+        ids, elapsed_ms = _run_recursive_cte(
+            db_conn, test_tenant_id, hierarchy["project_id"]
+        )
         expected = hierarchy["total_count"]
 
-        print(f"\n  CTE returned {len(ids)} descendants in {elapsed_ms:.2f}ms (expected {expected})")
-
-        assert len(ids) == expected, (
-            f"Expected {expected} descendants, got {len(ids)}"
+        print(
+            f"\n  CTE returned {len(ids)} descendants in {elapsed_ms:.2f}ms (expected {expected})"
         )
 
-    def test_cte_from_file_returns_file_and_chunks(self, db_conn, test_tenant_id, hierarchy):
+        assert len(ids) == expected, f"Expected {expected} descendants, got {len(ids)}"
+
+    def test_cte_from_file_returns_file_and_chunks(
+        self, db_conn, test_tenant_id, hierarchy
+    ):
         """Recursive CTE from a file should return the file + its 19 chunks = 20."""
         file_id = hierarchy["file_ids"][0]
         ids, elapsed_ms = _run_recursive_cte(db_conn, test_tenant_id, file_id)
 
-        print(f"\n  CTE from file returned {len(ids)} descendants in {elapsed_ms:.2f}ms (expected 20)")
+        print(
+            f"\n  CTE from file returned {len(ids)} descendants in {elapsed_ms:.2f}ms (expected 20)"
+        )
 
         assert len(ids) == 20  # 1 file + 19 chunks
 
@@ -235,25 +257,35 @@ class TestHierarchyScopingPerformance:
         chunk_id = hierarchy["chunk_ids"][0]
         ids, elapsed_ms = _run_recursive_cte(db_conn, test_tenant_id, chunk_id)
 
-        print(f"\n  CTE from chunk returned {len(ids)} descendants in {elapsed_ms:.2f}ms (expected 1)")
+        print(
+            f"\n  CTE from chunk returned {len(ids)} descendants in {elapsed_ms:.2f}ms (expected 1)"
+        )
 
         assert len(ids) == 1
 
-    def test_cte_nonexistent_scope_returns_empty(self, db_conn, test_tenant_id, hierarchy):
+    def test_cte_nonexistent_scope_returns_empty(
+        self, db_conn, test_tenant_id, hierarchy
+    ):
         """Recursive CTE for nonexistent scope anchor returns empty."""
         fake_id = uuid4()
         ids, elapsed_ms = _run_recursive_cte(db_conn, test_tenant_id, fake_id)
 
-        print(f"\n  CTE for nonexistent scope returned {len(ids)} in {elapsed_ms:.2f}ms")
+        print(
+            f"\n  CTE for nonexistent scope returned {len(ids)} in {elapsed_ms:.2f}ms"
+        )
 
         assert len(ids) == 0
 
     def test_cte_tenant_isolation(self, db_conn, test_tenant_id, hierarchy):
         """Recursive CTE with wrong tenant_id should return empty."""
         wrong_tenant = test_tenant_id + 1
-        ids, elapsed_ms = _run_recursive_cte(db_conn, wrong_tenant, hierarchy["project_id"])
+        ids, elapsed_ms = _run_recursive_cte(
+            db_conn, wrong_tenant, hierarchy["project_id"]
+        )
 
-        print(f"\n  CTE with wrong tenant returned {len(ids)} in {elapsed_ms:.2f}ms (expected 0)")
+        print(
+            f"\n  CTE with wrong tenant returned {len(ids)} in {elapsed_ms:.2f}ms (expected 0)"
+        )
 
         assert len(ids) == 0
 
@@ -264,7 +296,9 @@ class TestHierarchyScopingPerformance:
         """
         times = []
         for _ in range(10):
-            _, elapsed_ms = _run_recursive_cte(db_conn, test_tenant_id, hierarchy["project_id"])
+            _, elapsed_ms = _run_recursive_cte(
+                db_conn, test_tenant_id, hierarchy["project_id"]
+            )
             times.append(elapsed_ms)
 
         times.sort()
@@ -272,12 +306,18 @@ class TestHierarchyScopingPerformance:
         avg_ms = sum(times) / len(times)
         p95_ms = times[int(len(times) * 0.95)]
 
-        print(f"\n  10 iterations: median={median_ms:.2f}ms, avg={avg_ms:.2f}ms, p95={p95_ms:.2f}ms")
+        print(
+            f"\n  10 iterations: median={median_ms:.2f}ms, avg={avg_ms:.2f}ms, p95={p95_ms:.2f}ms"
+        )
         print(f"  All times: {[f'{t:.2f}' for t in times]}")
 
-        assert median_ms < 10, f"Median CTE time {median_ms:.2f}ms exceeds 10ms threshold"
+        assert median_ms < 10, (
+            f"Median CTE time {median_ms:.2f}ms exceeds 10ms threshold"
+        )
 
     def test_cte_explain_plan(self, db_conn, test_tenant_id, hierarchy):
         """Print EXPLAIN ANALYZE for the CTE query (diagnostic, always passes)."""
         print("\n  EXPLAIN ANALYZE for full hierarchy CTE:")
-        _run_recursive_cte(db_conn, test_tenant_id, hierarchy["project_id"], explain=True)
+        _run_recursive_cte(
+            db_conn, test_tenant_id, hierarchy["project_id"], explain=True
+        )

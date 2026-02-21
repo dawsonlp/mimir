@@ -58,7 +58,9 @@ def _create_tenant(shortname: str | None = None) -> dict:
     return resp.json()
 
 
-def _create_artifact(tenant_id: int, title: str, content: str, metadata: dict | None = None) -> dict:
+def _create_artifact(
+    tenant_id: int, title: str, content: str, metadata: dict | None = None
+) -> dict:
     """Create an artifact, return the response dict."""
     body = {
         "artifact_type": "document",
@@ -100,10 +102,14 @@ def _register_embedding_type(code: str, dimension: int) -> dict:
     for et in items:
         if et.get("code") == code:
             return et
-    raise AssertionError(f"Failed to register or find embedding type '{code}': {resp.text}")
+    raise AssertionError(
+        f"Failed to register or find embedding type '{code}': {resp.text}"
+    )
 
 
-def _create_embedding(tenant_id: int, artifact_id: str, embedding_type: str, vector: list[float]) -> dict:
+def _create_embedding(
+    tenant_id: int, artifact_id: str, embedding_type: str, vector: list[float]
+) -> dict:
     """Create an embedding for an artifact, return the response dict."""
     resp = httpx.post(
         f"{BASE_URL}/embeddings",
@@ -160,13 +166,19 @@ def test_data():
 
     # Create embeddings — vectors designed so python and rust are closer to each other
     # than to javascript (simulating programming-language similarity)
-    vec_python = [0.9, 0.1, 0.8, 0.2]       # programming-heavy
-    vec_rust = [0.85, 0.15, 0.75, 0.25]      # similar to python
-    vec_javascript = [0.2, 0.9, 0.3, 0.8]    # web-heavy, different cluster
+    vec_python = [0.9, 0.1, 0.8, 0.2]  # programming-heavy
+    vec_rust = [0.85, 0.15, 0.75, 0.25]  # similar to python
+    vec_javascript = [0.2, 0.9, 0.3, 0.8]  # web-heavy, different cluster
 
-    emb_python = _create_embedding(tenant_id, art_python["id"], embedding_type_name, vec_python)
-    emb_rust = _create_embedding(tenant_id, art_rust["id"], embedding_type_name, vec_rust)
-    emb_javascript = _create_embedding(tenant_id, art_javascript["id"], embedding_type_name, vec_javascript)
+    emb_python = _create_embedding(
+        tenant_id, art_python["id"], embedding_type_name, vec_python
+    )
+    emb_rust = _create_embedding(
+        tenant_id, art_rust["id"], embedding_type_name, vec_rust
+    )
+    emb_javascript = _create_embedding(
+        tenant_id, art_javascript["id"], embedding_type_name, vec_javascript
+    )
 
     return {
         "tenant_id": tenant_id,
@@ -189,7 +201,9 @@ def test_data():
     }
 
 
-def _search_with_tenant(tenant_id: int, body: dict, expected_status: int = 200) -> httpx.Response:
+def _search_with_tenant(
+    tenant_id: int, body: dict, expected_status: int = 200
+) -> httpx.Response:
     """POST /search with a specific tenant ID."""
     resp = httpx.post(
         f"{BASE_URL}/search",
@@ -331,7 +345,10 @@ class TestUnifiedFulltextSearch:
         assert data2["strategy"] == "fulltext"
         # Different result (or empty if only 1 match)
         if data2["total"] > 1 and data["results"] and data2["results"]:
-            assert data["results"][0]["artifact"]["id"] != data2["results"][0]["artifact"]["id"]
+            assert (
+                data["results"][0]["artifact"]["id"]
+                != data2["results"][0]["artifact"]["id"]
+            )
 
     def test_fulltext_with_metadata_filters(self, test_data):
         """Fulltext with metadata_filters restricts results."""
@@ -419,11 +436,15 @@ class TestUnifiedSemanticSearch:
         javascript_id = test_data["artifacts"]["javascript"]["id"]
 
         # Python should be first (exact match), rust should be before javascript
-        assert result_ids[0] == python_id, f"Expected python first, got order: {result_ids}"
-        python_idx = result_ids.index(python_id)
+        assert result_ids[0] == python_id, (
+            f"Expected python first, got order: {result_ids}"
+        )
+        result_ids.index(python_id)
         rust_idx = result_ids.index(rust_id)
         js_idx = result_ids.index(javascript_id)
-        assert rust_idx < js_idx, f"Expected rust before javascript: rust={rust_idx}, js={js_idx}"
+        assert rust_idx < js_idx, (
+            f"Expected rust before javascript: rust={rust_idx}, js={js_idx}"
+        )
 
     def test_semantic_with_similarity_threshold(self, test_data):
         """High similarity_threshold should filter out distant results."""
@@ -483,11 +504,14 @@ class TestUnifiedSemanticSearch:
         assert data1["strategy"] == "semantic"
         assert data2["strategy"] == "semantic"
         if data1["results"] and data2["results"]:
-            assert data1["results"][0]["artifact"]["id"] != data2["results"][0]["artifact"]["id"]
+            assert (
+                data1["results"][0]["artifact"]["id"]
+                != data2["results"][0]["artifact"]["id"]
+            )
 
     def test_semantic_invalid_embedding_type(self, test_data):
         """Nonexistent embedding type returns 400."""
-        resp = _search_with_tenant(
+        _search_with_tenant(
             test_data["tenant_id"],
             {
                 "query_vector": [0.1, 0.2, 0.3, 0.4],
@@ -499,7 +523,7 @@ class TestUnifiedSemanticSearch:
 
     def test_semantic_dimension_mismatch(self, test_data):
         """Wrong vector dimension returns 400."""
-        resp = _search_with_tenant(
+        _search_with_tenant(
             test_data["tenant_id"],
             {
                 "query_vector": [0.1, 0.2],  # dim=2, expected dim=4
@@ -540,7 +564,9 @@ class TestUnifiedHybridSearch:
             test_data["tenant_id"],
             {
                 "query": "systems safety performance",  # FTS biases toward Rust
-                "query_vector": test_data["vectors"]["python"],  # vector biases toward Python
+                "query_vector": test_data["vectors"][
+                    "python"
+                ],  # vector biases toward Python
                 "embedding_type": test_data["embedding_type"],
                 "limit": 10,
             },
@@ -559,7 +585,9 @@ class TestUnifiedHybridSearch:
             test_data["tenant_id"],
             {
                 "query": "web browser Node.js",  # FTS biases toward JavaScript
-                "query_vector": test_data["vectors"]["python"],  # vector biases toward Python
+                "query_vector": test_data["vectors"][
+                    "python"
+                ],  # vector biases toward Python
                 "embedding_type": test_data["embedding_type"],
                 "semantic_weight": 1.0,  # full weight on vector
                 "limit": 10,
@@ -569,7 +597,7 @@ class TestUnifiedHybridSearch:
         assert data["strategy"] == "hybrid"
         if data["results"]:
             # With full semantic weight, python should rank high
-            first_id = data["results"][0]["artifact"]["id"]
+            data["results"][0]["artifact"]["id"]
             python_id = test_data["artifacts"]["python"]["id"]
             # At least python should be in top results
             result_ids = [r["artifact"]["id"] for r in data["results"]]
@@ -776,7 +804,9 @@ class TestUnifiedResponseShape:
     def test_response_includes_strategy_field(self, test_data):
         """Response body includes the strategy field for all strategies."""
         # Fulltext
-        resp = _search_with_tenant(test_data["tenant_id"], {"query": "test", "limit": 1})
+        resp = _search_with_tenant(
+            test_data["tenant_id"], {"query": "test", "limit": 1}
+        )
         data = resp.json()
         assert "strategy" in data
         assert data["strategy"] == "fulltext"
@@ -795,7 +825,9 @@ class TestUnifiedResponseShape:
 
     def test_response_has_standard_fields(self, test_data):
         """Response includes results, total, query."""
-        resp = _search_with_tenant(test_data["tenant_id"], {"query": "test", "limit": 1})
+        resp = _search_with_tenant(
+            test_data["tenant_id"], {"query": "test", "limit": 1}
+        )
         data = resp.json()
         assert "results" in data
         assert "total" in data

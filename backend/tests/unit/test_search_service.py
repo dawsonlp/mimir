@@ -5,9 +5,10 @@ Tests focus on _filter_results_by_relation - the core filtering logic
 with edge cases around ordering, scoring, and ranking.
 """
 
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
+
+import pytest
 
 from mimir.schemas.artifact import ArtifactResponse
 from mimir.schemas.search import SearchResult
@@ -32,7 +33,7 @@ def _make_search_result(name: str, index: int) -> tuple[SearchResult, dict]:
         source_system=None,
         external_id=None,
         metadata=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     # Original score decreases with index
     score = 1.0 - (index * 0.1)
@@ -42,7 +43,7 @@ def _make_search_result(name: str, index: int) -> tuple[SearchResult, dict]:
 
 class TestFilterResultsByRelation:
     """Test _filter_results_by_relation helper function.
-    
+
     This function is critical for P2 relation-aware search. It must:
     - Correctly filter to related IDs
     - Preserve original search scores
@@ -65,9 +66,9 @@ class TestFilterResultsByRelation:
         """Results with IDs in related_ids set should be kept."""
         results, uuid_map = sample_search_results
         related_ids = {uuid_map["doc_a"], uuid_map["doc_c"]}
-        
+
         filtered = _filter_results_by_relation(results, related_ids)
-        
+
         assert len(filtered) == 2
         filtered_ids = {r.artifact.id for r in filtered}
         assert uuid_map["doc_a"] in filtered_ids
@@ -75,15 +76,15 @@ class TestFilterResultsByRelation:
 
     def test_filter_preserves_original_scores(self, sample_search_results):
         """Original search scores should be preserved after filtering.
-        
+
         Critical: scores come from search ranking, not relation filtering.
         """
         results, uuid_map = sample_search_results
         original_scores = {r.artifact.id: r.score for r in results}
         related_ids = {uuid_map["doc_a"], uuid_map["doc_d"]}
-        
+
         filtered = _filter_results_by_relation(results, related_ids)
-        
+
         for result in filtered:
             assert result.score == original_scores[result.artifact.id]
 
@@ -92,9 +93,9 @@ class TestFilterResultsByRelation:
         results, uuid_map = sample_search_results
         # Keep doc_a (rank 1), doc_c (rank 3), doc_e (rank 5)
         related_ids = {uuid_map["doc_a"], uuid_map["doc_c"], uuid_map["doc_e"]}
-        
+
         filtered = _filter_results_by_relation(results, related_ids)
-        
+
         # New ranks should be 1, 2, 3
         ranks = [r.rank for r in filtered]
         assert ranks == [1, 2, 3]
@@ -103,9 +104,9 @@ class TestFilterResultsByRelation:
         """Results should maintain their relative order after filtering."""
         results, uuid_map = sample_search_results
         related_ids = {uuid_map["doc_b"], uuid_map["doc_d"], uuid_map["doc_e"]}
-        
+
         filtered = _filter_results_by_relation(results, related_ids)
-        
+
         # Order should be preserved: doc_b, doc_d, doc_e
         assert filtered[0].artifact.id == uuid_map["doc_b"]
         assert filtered[1].artifact.id == uuid_map["doc_d"]
@@ -121,7 +122,7 @@ class TestFilterResultsByRelation:
         """If no results match related_ids, return empty."""
         results, _ = sample_search_results
         unrelated_ids = {uuid4(), uuid4(), uuid4()}
-        
+
         filtered = _filter_results_by_relation(results, unrelated_ids)
-        
+
         assert filtered == []

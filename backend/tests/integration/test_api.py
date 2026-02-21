@@ -46,17 +46,27 @@ class TestTenantAPI:
         # Create first tenant
         response1 = await async_client.post(
             "/tenants",
-            json={"shortname": unique_name, "name": "First", "tenant_type": "environment"},
+            json={
+                "shortname": unique_name,
+                "name": "First",
+                "tenant_type": "environment",
+            },
         )
         assert response1.status_code == 201
 
         # Attempt duplicate should fail
         response2 = await async_client.post(
             "/tenants",
-            json={"shortname": unique_name, "name": "Second", "tenant_type": "environment"},
+            json={
+                "shortname": unique_name,
+                "name": "Second",
+                "tenant_type": "environment",
+            },
         )
         # Should be 409 Conflict or 400 Bad Request depending on implementation
-        assert response2.status_code in [400, 409, 500], f"Expected error, got {response2.status_code}"
+        assert response2.status_code in [400, 409, 500], (
+            f"Expected error, got {response2.status_code}"
+        )
 
     @pytest.mark.asyncio
     async def test_invalid_tenant_type_rejected(self, async_client):
@@ -78,7 +88,11 @@ class TestArtifactAPI:
         unique_name = f"art-{uuid4().hex[:8]}"
         response = await async_client.post(
             "/tenants",
-            json={"shortname": unique_name, "name": "Artifact Test", "tenant_type": "experiment"},
+            json={
+                "shortname": unique_name,
+                "name": "Artifact Test",
+                "tenant_type": "experiment",
+            },
         )
         return response.json()
 
@@ -125,7 +139,9 @@ class TestArtifactAPI:
         artifact_id = artifact["id"]
 
         # Read
-        get_response = await async_client.get(f"/artifacts/{artifact_id}", headers=headers)
+        get_response = await async_client.get(
+            f"/artifacts/{artifact_id}", headers=headers
+        )
         assert get_response.status_code == 200
         assert get_response.json()["title"] == "Test Document"
 
@@ -147,7 +163,11 @@ class TestRelationAPI:
         # Create tenant
         tenant_resp = await async_client.post(
             "/tenants",
-            json={"shortname": f"rel-{uuid4().hex[:8]}", "name": "Relation Test", "tenant_type": "experiment"},
+            json={
+                "shortname": f"rel-{uuid4().hex[:8]}",
+                "name": "Relation Test",
+                "tenant_type": "experiment",
+            },
         )
         tenant = tenant_resp.json()
         headers = {"X-Tenant-ID": str(tenant["id"])}
@@ -172,7 +192,9 @@ class TestRelationAPI:
         }
 
     @pytest.mark.asyncio
-    async def test_create_relation_between_artifacts(self, async_client, test_artifacts):
+    async def test_create_relation_between_artifacts(
+        self, async_client, test_artifacts
+    ):
         """Creating a relation should link two artifacts."""
         headers = test_artifacts["headers"]
         art1 = test_artifacts["artifact1"]
@@ -227,7 +249,11 @@ class TestProvenanceAPI:
         # Create tenant
         tenant_resp = await async_client.post(
             "/tenants",
-            json={"shortname": f"prov-{uuid4().hex[:8]}", "name": "Provenance Test", "tenant_type": "experiment"},
+            json={
+                "shortname": f"prov-{uuid4().hex[:8]}",
+                "name": "Provenance Test",
+                "tenant_type": "experiment",
+            },
         )
         tenant = tenant_resp.json()
         headers = {"X-Tenant-ID": str(tenant["id"])}
@@ -265,7 +291,11 @@ class TestSearchAPI:
         # Create tenant
         tenant_resp = await async_client.post(
             "/tenants",
-            json={"shortname": f"search-{uuid4().hex[:8]}", "name": "Search Test", "tenant_type": "experiment"},
+            json={
+                "shortname": f"search-{uuid4().hex[:8]}",
+                "name": "Search Test",
+                "tenant_type": "experiment",
+            },
         )
         tenant = tenant_resp.json()
         headers = {"X-Tenant-ID": str(tenant["id"])}
@@ -292,4 +322,6 @@ class TestSearchAPI:
         results = search_resp.json()
 
         # Should find our document - results has 'items' list
-        assert results.get("total", 0) > 0 or len(results.get("items", [])) > 0, f"Expected to find document with '{unique_word}', got: {results}"
+        assert results.get("total", 0) > 0 or len(results.get("items", [])) > 0, (
+            f"Expected to find document with '{unique_word}', got: {results}"
+        )

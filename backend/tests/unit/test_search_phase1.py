@@ -10,10 +10,10 @@ Pure function tests (no I/O, no mocks). Database-dependent tests live in integra
 """
 
 import json
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
 
 import pytest
-from datetime import datetime, timezone
-from uuid import UUID, uuid4
 
 from mimir.schemas.artifact import ArtifactResponse
 from mimir.schemas.search import (
@@ -24,7 +24,6 @@ from mimir.services.search_service import (
     _build_metadata_filter,
     _build_scope_filter,
 )
-
 
 # =============================================================================
 # Helpers
@@ -52,7 +51,7 @@ def _make_artifact(
         source_system=None,
         external_id=None,
         metadata=metadata,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -135,7 +134,7 @@ class TestPaginationSchemas:
 
 class TestPaginationSlicing:
     """Test offset/limit slicing behavior on in-memory result lists.
-    
+
     These test the slicing pattern used by semantic_search, hybrid_search,
     and similar_artifacts for offset/limit after scoring.
     """
@@ -185,7 +184,7 @@ class TestPaginationSlicing:
 
 class TestBuildMetadataFilter:
     """Test _build_metadata_filter SQL generation.
-    
+
     This function builds parameterized JSONB containment clauses for GIN index use.
     """
 

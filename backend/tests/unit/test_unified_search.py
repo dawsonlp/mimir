@@ -5,14 +5,13 @@ Tests the pure _infer_search_strategy() function and UnifiedSearchRequest schema
 without any database or I/O dependencies.
 """
 
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
 
 from mimir.routers.search import _infer_search_strategy
 from mimir.schemas.search import SearchStrategy, UnifiedSearchRequest
-
 
 # =============================================================================
 # Helper: build UnifiedSearchRequest with minimal boilerplate
@@ -218,14 +217,25 @@ class TestUnifiedSearchRequestValidation:
     def test_similarity_threshold_bounds(self):
         """similarity_threshold must be 0.0-1.0."""
         with pytest.raises(Exception):
-            UnifiedSearchRequest(query_vector=[0.1], embedding_type="test-type", similarity_threshold=1.5)
+            UnifiedSearchRequest(
+                query_vector=[0.1], embedding_type="test-type", similarity_threshold=1.5
+            )
         with pytest.raises(Exception):
-            UnifiedSearchRequest(query_vector=[0.1], embedding_type="test-type", similarity_threshold=-0.1)
+            UnifiedSearchRequest(
+                query_vector=[0.1],
+                embedding_type="test-type",
+                similarity_threshold=-0.1,
+            )
 
     def test_semantic_weight_bounds(self):
         """semantic_weight must be 0.0-1.0."""
         with pytest.raises(Exception):
-            UnifiedSearchRequest(query="test", query_vector=[0.1], embedding_type="test-type", semantic_weight=2.0)
+            UnifiedSearchRequest(
+                query="test",
+                query_vector=[0.1],
+                embedding_type="test-type",
+                semantic_weight=2.0,
+            )
 
     def test_embedding_type_min_length(self):
         """embedding_type must be at least 3 characters."""

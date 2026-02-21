@@ -13,7 +13,7 @@ from mimir.schemas.tenant import TenantCreate
 
 class TestTenantShortname:
     """Test TenantCreate shortname validation.
-    
+
     Shortname constraints exist to ensure database-safe identifiers
     and URL-safe values. These tests document the rules and catch
     accidental removal of the regex pattern.

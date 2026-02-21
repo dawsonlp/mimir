@@ -32,7 +32,9 @@ class TestTenantDeletion:
         assert response.status_code == 201, response.text
         return response.json()
 
-    async def _create_artifact(self, client, tenant_id: int, title: str = "Test") -> dict:
+    async def _create_artifact(
+        self, client, tenant_id: int, title: str = "Test"
+    ) -> dict:
         """Helper: create an artifact and return its data."""
         response = await client.post(
             "/artifacts",
@@ -169,8 +171,10 @@ class TestTenantDeletion:
         tenant_b = await self._create_tenant(async_client)
 
         # Create artifact in each tenant
-        art_a = await self._create_artifact(async_client, tenant_a["id"], "Tenant A Doc")
-        art_b = await self._create_artifact(async_client, tenant_b["id"], "Tenant B Doc")
+        await self._create_artifact(async_client, tenant_a["id"], "Tenant A Doc")
+        art_b = await self._create_artifact(
+            async_client, tenant_b["id"], "Tenant B Doc"
+        )
 
         # Delete tenant A
         del_resp = await async_client.delete(f"/tenants/{tenant_a['id']}")

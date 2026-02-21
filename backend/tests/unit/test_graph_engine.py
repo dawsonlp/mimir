@@ -6,8 +6,6 @@ All tests are pure — no database or I/O required.
 
 from uuid import UUID
 
-import pytest
-
 from mimir.schemas.graph import (
     GraphScopeTooLargeError,
     PathResult,
@@ -172,9 +170,7 @@ class TestExtractPathSteps:
         e_cd = _make_edge(202, 102, 103, "references")
         v_d = _make_vertex(103, D_ID)
 
-        steps = _extract_path_steps(
-            [v_a, e_ab, v_b, e_bc, v_c, e_cd, v_d], A_ID
-        )
+        steps = _extract_path_steps([v_a, e_ab, v_b, e_bc, v_c, e_cd, v_d], A_ID)
 
         assert len(steps) == 3
         assert [s.relation_type for s in steps] == [

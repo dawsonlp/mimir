@@ -13,18 +13,16 @@ Test Graph Topology (§10 of technical design):
 6 artifacts (A-F), 5 relations.
 """
 
+from uuid import UUID
+
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from uuid import UUID
 
-from mimir.services import graph_engine
 from mimir.schemas.graph import (
     GraphScopeTooLargeError,
-    TraversalResult,
-    PathResult,
 )
-
+from mimir.services import graph_engine
 
 # =============================================================================
 # Fixtures
@@ -48,19 +46,19 @@ async def test_graph(async_client: AsyncClient):
     Returns a dict with tenant_id and artifact UUIDs keyed A-F.
     """
     # Create tenant
-    resp = await async_client.post("/tenants", json={
-        "shortname": "graph-test",
-        "name": "Graph Traversal Test Tenant",
-        "tenant_type": "environment",
-    })
+    resp = await async_client.post(
+        "/tenants",
+        json={
+            "shortname": "graph-test",
+            "name": "Graph Traversal Test Tenant",
+            "tenant_type": "environment",
+        },
+    )
     # If tenant already exists, try to find it
     if resp.status_code == 409:
         resp = await async_client.get("/tenants")
         tenants = resp.json()
-        tenant_id = next(
-            t["id"] for t in tenants
-            if t["shortname"] == "graph-test"
-        )
+        tenant_id = next(t["id"] for t in tenants if t["shortname"] == "graph-test")
     else:
         assert resp.status_code == 201, f"Create tenant failed: {resp.text}"
         tenant_id = resp.json()["id"]
@@ -70,12 +68,16 @@ async def test_graph(async_client: AsyncClient):
     # Create 6 artifacts (A-F)
     artifact_ids = {}
     for label in ["A", "B", "C", "D", "E", "F"]:
-        resp = await async_client.post("/artifacts", json={
-            "artifact_type": "document",
-            "title": f"Artifact {label}",
-            "content": f"Content for artifact {label}",
-            "source": "graph-test",
-        }, headers=headers)
+        resp = await async_client.post(
+            "/artifacts",
+            json={
+                "artifact_type": "document",
+                "title": f"Artifact {label}",
+                "content": f"Content for artifact {label}",
+                "source": "graph-test",
+            },
+            headers=headers,
+        )
         assert resp.status_code == 201, f"Create artifact {label} failed: {resp.text}"
         artifact_ids[label] = UUID(resp.json()["id"])
 
@@ -94,11 +96,15 @@ async def test_graph(async_client: AsyncClient):
     ]
 
     for source_id, target_id, rel_type in relations:
-        resp = await async_client.post("/relations", json={
-            "source_id": str(source_id),
-            "target_id": str(target_id),
-            "relation_type": rel_type,
-        }, headers=headers)
+        resp = await async_client.post(
+            "/relations",
+            json={
+                "source_id": str(source_id),
+                "target_id": str(target_id),
+                "relation_type": rel_type,
+            },
+            headers=headers,
+        )
         assert resp.status_code in (201, 409), f"Create relation failed: {resp.text}"
 
     return {
@@ -176,7 +182,9 @@ class TestTraverse:
 
         result_ids = {r.artifact_id for r in results}
         assert test_graph["B"] in result_ids, "B is connected to A via derived_from"
-        assert test_graph["E"] not in result_ids, "E is connected via references, not derived_from"
+        assert test_graph["E"] not in result_ids, (
+            "E is connected via references, not derived_from"
+        )
 
     async def test_traverse_direction_outgoing(self, test_graph):
         """From C, outgoing only → {D, F}."""
@@ -283,7 +291,9 @@ class TestFindPaths:
 
         assert len(paths) >= 1, "Should find at least one path A→D"
         shortest = paths[0]
-        assert shortest.length == 3, f"Shortest A→D should be 3 hops, got {shortest.length}"
+        assert shortest.length == 3, (
+            f"Shortest A→D should be 3 hops, got {shortest.length}"
+        )
         assert shortest.start_artifact_id == test_graph["A"]
         assert shortest.end_artifact_id == test_graph["D"]
 
@@ -351,89 +361,123 @@ class TestSpecialCharacterTitles:
     async def apostrophe_tenant(self, async_client: AsyncClient):
         """Create a dedicated tenant for special-character tests."""
         import uuid as _uuid
+
         shortname = f"apos-{_uuid.uuid4().hex[:8]}"
-        resp = await async_client.post("/tenants", json={
-            "shortname": shortname,
-            "name": "Apostrophe Test Tenant",
-            "tenant_type": "experiment",
-        })
+        resp = await async_client.post(
+            "/tenants",
+            json={
+                "shortname": shortname,
+                "name": "Apostrophe Test Tenant",
+                "tenant_type": "experiment",
+            },
+        )
         assert resp.status_code == 201, f"Create tenant failed: {resp.text}"
         tenant_id = resp.json()["id"]
         return {"tenant_id": tenant_id, "headers": {"X-Tenant-ID": str(tenant_id)}}
 
     async def test_apostrophe_in_title(self, async_client, apostrophe_tenant):
         """Title with a single apostrophe: "What's Next"."""
-        resp = await async_client.post("/artifacts", json={
-            "artifact_type": "document",
-            "title": "What's Next",
-            "content": "Content with apostrophe",
-            "source": "apostrophe-test",
-        }, headers=apostrophe_tenant["headers"])
+        resp = await async_client.post(
+            "/artifacts",
+            json={
+                "artifact_type": "document",
+                "title": "What's Next",
+                "content": "Content with apostrophe",
+                "source": "apostrophe-test",
+            },
+            headers=apostrophe_tenant["headers"],
+        )
         assert resp.status_code == 201, (
             f"Artifact with apostrophe title failed: {resp.text}"
         )
 
     async def test_double_apostrophe_in_title(self, async_client, apostrophe_tenant):
         """Title with multiple apostrophes: "It's John's Plan"."""
-        resp = await async_client.post("/artifacts", json={
-            "artifact_type": "document",
-            "title": "It's John's Plan",
-            "content": "Content with double apostrophe",
-            "source": "apostrophe-test",
-        }, headers=apostrophe_tenant["headers"])
+        resp = await async_client.post(
+            "/artifacts",
+            json={
+                "artifact_type": "document",
+                "title": "It's John's Plan",
+                "content": "Content with double apostrophe",
+                "source": "apostrophe-test",
+            },
+            headers=apostrophe_tenant["headers"],
+        )
         assert resp.status_code == 201, (
             f"Artifact with double apostrophe title failed: {resp.text}"
         )
 
     async def test_backslash_in_title(self, async_client, apostrophe_tenant):
         """Title with backslashes: "path\\to\\file"."""
-        resp = await async_client.post("/artifacts", json={
-            "artifact_type": "document",
-            "title": "path\\to\\file",
-            "content": "Content with backslashes",
-            "source": "apostrophe-test",
-        }, headers=apostrophe_tenant["headers"])
+        resp = await async_client.post(
+            "/artifacts",
+            json={
+                "artifact_type": "document",
+                "title": "path\\to\\file",
+                "content": "Content with backslashes",
+                "source": "apostrophe-test",
+            },
+            headers=apostrophe_tenant["headers"],
+        )
         assert resp.status_code == 201, (
             f"Artifact with backslash title failed: {resp.text}"
         )
 
     async def test_mixed_special_chars_in_title(self, async_client, apostrophe_tenant):
         """Title with both apostrophes and backslashes: "O'Brien's C:\\Users\\doc"."""
-        resp = await async_client.post("/artifacts", json={
-            "artifact_type": "document",
-            "title": "O'Brien's C:\\Users\\doc",
-            "content": "Content with mixed specials",
-            "source": "apostrophe-test",
-        }, headers=apostrophe_tenant["headers"])
+        resp = await async_client.post(
+            "/artifacts",
+            json={
+                "artifact_type": "document",
+                "title": "O'Brien's C:\\Users\\doc",
+                "content": "Content with mixed specials",
+                "source": "apostrophe-test",
+            },
+            headers=apostrophe_tenant["headers"],
+        )
         assert resp.status_code == 201, (
             f"Artifact with mixed special chars title failed: {resp.text}"
         )
 
-    async def test_relation_between_apostrophe_artifacts(self, async_client, apostrophe_tenant):
+    async def test_relation_between_apostrophe_artifacts(
+        self, async_client, apostrophe_tenant
+    ):
         """Create two artifacts with apostrophes, then a relation between them."""
         headers = apostrophe_tenant["headers"]
 
-        resp1 = await async_client.post("/artifacts", json={
-            "artifact_type": "document",
-            "title": "What's the Problem?",
-            "content": "Source artifact",
-            "source": "apostrophe-test",
-        }, headers=headers)
+        resp1 = await async_client.post(
+            "/artifacts",
+            json={
+                "artifact_type": "document",
+                "title": "What's the Problem?",
+                "content": "Source artifact",
+                "source": "apostrophe-test",
+            },
+            headers=headers,
+        )
         assert resp1.status_code == 201, f"Source artifact failed: {resp1.text}"
 
-        resp2 = await async_client.post("/artifacts", json={
-            "artifact_type": "document",
-            "title": "Here's the Solution",
-            "content": "Target artifact",
-            "source": "apostrophe-test",
-        }, headers=headers)
+        resp2 = await async_client.post(
+            "/artifacts",
+            json={
+                "artifact_type": "document",
+                "title": "Here's the Solution",
+                "content": "Target artifact",
+                "source": "apostrophe-test",
+            },
+            headers=headers,
+        )
         assert resp2.status_code == 201, f"Target artifact failed: {resp2.text}"
 
-        resp3 = await async_client.post("/relations", json={
-            "source_id": resp1.json()["id"],
-            "target_id": resp2.json()["id"],
-            "relation_type": "derived_from",
-        }, headers=headers)
+        resp3 = await async_client.post(
+            "/relations",
+            json={
+                "source_id": resp1.json()["id"],
+                "target_id": resp2.json()["id"],
+                "relation_type": "derived_from",
+            },
+            headers=headers,
+        )
         assert resp3.status_code == 201, f"Relation creation failed: {resp3.text}"
 
 
@@ -451,9 +495,7 @@ class TestGraphEngineErrors:
         from unittest.mock import patch
 
         # Patch settings to have a very low result set limit
-        with patch(
-            "mimir.services.graph_engine.get_settings"
-        ) as mock_settings:
+        with patch("mimir.services.graph_engine.get_settings") as mock_settings:
             mock_settings.return_value.graph_max_depth = 10
             mock_settings.return_value.graph_max_result_set = 1  # Only 1 allowed
             mock_settings.return_value.graph_query_timeout_seconds = 5
