@@ -10,6 +10,33 @@ pip install mimir-client
 
 ## Quick Start
 
+### Synchronous (recommended for scripts, CLI tools, and sync frameworks)
+
+```python
+from mimir_client import MimirSyncClient
+
+with MimirSyncClient(api_url="http://localhost:38000", tenant_id=1) as client:
+    # Health check
+    healthy = client.is_healthy()
+    print(f"API healthy: {healthy}")
+
+    # Create an artifact
+    artifact = client.create_artifact(
+        "document",
+        title="Architecture Overview",
+        content="This document describes the system architecture.",
+        metadata={"author": "team-lead"},
+    )
+    print(f"Created: {artifact.id} -- {artifact.title}")
+
+    # Search
+    results = client.search(query="architecture")
+    for r in results.results:
+        print(f"  [{r.score:.2f}] {r.artifact.title}")
+```
+
+### Async (for asyncio applications)
+
 ```python
 import asyncio
 from mimir_client import MimirClient
@@ -27,7 +54,7 @@ async def main():
             content="This document describes the system architecture.",
             metadata={"author": "team-lead"},
         )
-        print(f"Created: {artifact.id} — {artifact.title}")
+        print(f"Created: {artifact.id} -- {artifact.title}")
 
         # Search
         results = await client.search(query="architecture")
@@ -37,11 +64,21 @@ async def main():
 asyncio.run(main())
 ```
 
+Both clients have identical API surfaces. `MimirSyncClient` uses `httpx.Client` (blocking); `MimirClient` uses `httpx.AsyncClient`.
+
 ## Configuration
 
 ### Direct instantiation
 
 ```python
+# Sync
+client = MimirSyncClient(
+    api_url="http://localhost:38000",
+    tenant_id=1,
+    timeout=30.0,
+)
+
+# Async
 client = MimirClient(
     api_url="http://localhost:38000",
     tenant_id=1,
@@ -52,11 +89,13 @@ client = MimirClient(
 ### From environment variables
 
 ```python
-from mimir_client import MimirClient, get_settings
+from mimir_client import MimirClient, MimirSyncClient, get_settings
 
 # Reads MIMIR_API_URL, MIMIR_TENANT_ID, MIMIR_TIMEOUT from env / .env
 settings = get_settings()
-client = MimirClient.from_settings(settings)
+
+client = MimirSyncClient.from_settings(settings)  # sync
+client = MimirClient.from_settings(settings)       # async
 ```
 
 | Environment Variable | Default | Description |
@@ -126,7 +165,13 @@ except MimirConflictError:
 `ensure_*` methods are idempotent — they return existing resources or create new ones:
 
 ```python
-# Safe to call repeatedly — no-op if already exists
+# Sync
+tenant = client.ensure_tenant("dev", "Development")
+client.ensure_artifact_type("document", "Document", category="content")
+client.ensure_relation_type("derived_from", "Derived From", inverse_code="source_of")
+client.ensure_embedding_type("nomic", provider="ollama", dimensions=768)
+
+# Async
 tenant = await client.ensure_tenant("dev", "Development")
 await client.ensure_artifact_type("document", "Document", category="content")
 await client.ensure_relation_type("derived_from", "Derived From", inverse_code="source_of")

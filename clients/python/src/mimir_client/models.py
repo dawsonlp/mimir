@@ -24,7 +24,7 @@ class Tenant(BaseModel):
     is_active: bool = True
     metadata: dict | None = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: datetime | None = None
 
 
 class TenantList(BaseModel):
@@ -75,7 +75,7 @@ class Artifact(BaseModel):
     parent_artifact_id: UUID | None = None
     metadata: dict | None = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: datetime | None = None
 
 
 class ArtifactList(BaseModel):

@@ -9,6 +9,7 @@ except PackageNotFoundError:
 
 from mimir_client.client import MimirClient
 from mimir_client.config import MimirClientSettings, get_settings
+from mimir_client.sync_client import MimirSyncClient
 from mimir_client.exceptions import (
     MimirConflictError,
     MimirConnectionError,
@@ -46,6 +47,7 @@ from mimir_client.models import (
 __all__ = [
     # Client
     "MimirClient",
+    "MimirSyncClient",
     "MimirClientSettings",
     "get_settings",
     # Exceptions
