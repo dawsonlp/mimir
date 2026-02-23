@@ -4,6 +4,7 @@ Tests error mapping, URL construction, header injection, context manager,
 and model parsing using respx to mock httpx requests.
 
 Mirrors test_client.py structure for the synchronous client.
+Test fixtures match the actual server response schemas.
 """
 
 import pytest
@@ -32,7 +33,7 @@ from mimir_client import (
 )
 
 
-# --- Fixtures (same payloads as test_client.py) ---
+# --- Fixtures matching actual server response schemas ---
 
 
 SAMPLE_TENANT = {
@@ -44,13 +45,18 @@ SAMPLE_TENANT = {
     "is_active": True,
     "metadata": {},
     "created_at": "2026-02-20T10:00:00Z",
-    "updated_at": "2026-02-20T10:00:00Z",
+}
+
+SAMPLE_TENANT_MINIMAL = {
+    "id": 2,
+    "shortname": "test",
+    "name": "Test",
+    "created_at": "2026-02-20T10:00:00Z",
 }
 
 SAMPLE_ARTIFACT = {
     "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "tenant_id": 1,
-    "artifact_type_id": 1,
     "artifact_type": "document",
     "title": "Test Artifact",
     "content": "Test content",
@@ -59,18 +65,53 @@ SAMPLE_ARTIFACT = {
     "external_id": None,
     "parent_artifact_id": None,
     "metadata": {},
+    "content_hash": "abc123",
     "created_at": "2026-02-20T10:00:00Z",
-    "updated_at": "2026-02-20T10:00:00Z",
 }
 
 SAMPLE_ARTIFACT_TYPE = {
-    "id": 1,
     "code": "document",
     "display_name": "Document",
     "description": None,
     "category": "content",
     "is_active": True,
-    "sort_order": None,
+    "sort_order": 0,
+    "created_at": "2026-02-20T10:00:00Z",
+}
+
+SAMPLE_RELATION_TYPE = {
+    "code": "derived_from",
+    "display_name": "Derived From",
+    "description": None,
+    "inverse_code": "source_of",
+    "is_symmetric": False,
+    "is_active": True,
+    "sort_order": 0,
+    "created_at": "2026-02-20T10:00:00Z",
+}
+
+SAMPLE_RELATION = {
+    "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    "tenant_id": 1,
+    "source_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "target_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+    "relation_type": "derived_from",
+    "confidence": 0.95,
+    "metadata": {},
+    "created_at": "2026-02-20T10:00:00Z",
+}
+
+SAMPLE_EMBEDDING_TYPE = {
+    "code": "nomic-embed-text",
+    "display_name": "Nomic Embed Text",
+    "provider": "ollama",
+    "dimensions": 768,
+    "distance_metric": "cosine",
+    "max_tokens": None,
+    "description": None,
+    "vector_table_name": "vec_nomic_embed_text",
+    "is_active": True,
+    "sort_order": 0,
     "created_at": "2026-02-20T10:00:00Z",
 }
 
@@ -82,10 +123,9 @@ SAMPLE_SEARCH_RESPONSE = {
             "rank": 1,
         }
     ],
-    "strategy": "fulltext",
     "total": 1,
-    "limit": 20,
-    "offset": 0,
+    "query": "test query",
+    "strategy": "fulltext",
 }
 
 SAMPLE_HEALTH = {
@@ -138,15 +178,14 @@ class TestSyncClientConstruction:
 
 
 class TestSyncContextManager:
-    @respx.mock
-    def test_context_manager_closes_client(self):
-        respx.get("http://localhost:38000/health").mock(
-            return_value=httpx.Response(200, json=SAMPLE_HEALTH)
-        )
-        with MimirSyncClient() as client:
-            h = client.health()
-            assert h.status == "healthy"
-        # After exit, client should be closed. Attempting a request should fail.
+    def test_context_manager(self):
+        with MimirSyncClient(tenant_id=1) as client:
+            assert client.tenant_id == 1
+
+    def test_is_closed_after_exit(self):
+        client = MimirSyncClient(tenant_id=1)
+        with client:
+            pass
         assert client._client.is_closed
 
 
@@ -214,6 +253,18 @@ class TestSyncTenantMethods:
             assert isinstance(tenant, Tenant)
             assert tenant.shortname == "dev"
             assert tenant.id == 1
+
+    @respx.mock
+    def test_create_tenant_minimal_response(self):
+        """Server may return minimal tenant (only required fields)."""
+        respx.post("http://localhost:38000/tenants").mock(
+            return_value=httpx.Response(201, json=SAMPLE_TENANT_MINIMAL)
+        )
+        with MimirSyncClient() as client:
+            tenant = client.create_tenant("test", "Test")
+            assert isinstance(tenant, Tenant)
+            assert tenant.shortname == "test"
+            assert tenant.tenant_type == "environment"
 
     @respx.mock
     def test_get_tenant(self):
@@ -291,7 +342,8 @@ class TestSyncArtifactMethods:
     def test_list_artifacts(self):
         respx.get("http://localhost:38000/artifacts").mock(
             return_value=httpx.Response(
-                200, json={"items": [SAMPLE_ARTIFACT], "total": 1}
+                200,
+                json={"items": [SAMPLE_ARTIFACT], "total": 1, "limit": 50, "offset": 0},
             )
         )
         with MimirSyncClient(tenant_id=1) as client:
@@ -313,6 +365,7 @@ class TestSyncSearchMethods:
             result = client.search_fulltext("test query")
             assert isinstance(result, SearchResponse)
             assert result.strategy == "fulltext"
+            assert result.query == "test query"
             assert len(result.results) == 1
             assert result.results[0].score == 0.85
 

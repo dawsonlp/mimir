@@ -2,6 +2,9 @@
 
 These are lightweight client-side models that mirror the server's response schemas.
 They provide type safety, IDE autocomplete, and serialization support.
+
+IMPORTANT: These models MUST match the server schemas in backend/src/mimir/schemas/.
+When the server schema changes, these models must be updated to match.
 """
 
 from datetime import datetime
@@ -14,17 +17,18 @@ from pydantic import BaseModel, Field
 
 
 class Tenant(BaseModel):
-    """Tenant response model."""
+    """Tenant response model. Mirrors backend TenantResponse."""
 
     id: int
     shortname: str
     name: str
-    tenant_type: str
+    tenant_type: str = "environment"
     description: str | None = None
     is_active: bool = True
     metadata: dict | None = None
     created_at: datetime
-    updated_at: datetime | None = None
+
+    model_config = {"extra": "allow"}
 
 
 class TenantList(BaseModel):
@@ -38,16 +42,20 @@ class TenantList(BaseModel):
 
 
 class ArtifactType(BaseModel):
-    """Artifact type response model."""
+    """Artifact type response model. Mirrors backend ArtifactTypeResponse.
 
-    id: int
+    Note: Primary key is ``code`` (text), not an integer id.
+    """
+
     code: str
     display_name: str
     description: str | None = None
     category: str | None = None
     is_active: bool = True
-    sort_order: int | None = None
+    sort_order: int = 0
     created_at: datetime
+
+    model_config = {"extra": "allow"}
 
 
 class ArtifactTypeList(BaseModel):
@@ -61,21 +69,35 @@ class ArtifactTypeList(BaseModel):
 
 
 class Artifact(BaseModel):
-    """Artifact response model."""
+    """Artifact response model. Mirrors backend ArtifactResponse."""
 
     id: UUID
     tenant_id: int
-    artifact_type_id: int
     artifact_type: str
+
+    # Hierarchy
+    parent_artifact_id: UUID | None = None
+
+    # Positional info (for chunks, quotes, highlights)
+    start_offset: int | None = None
+    end_offset: int | None = None
+    position_metadata: dict | None = None
+
+    # Content
     title: str | None = None
     content: str | None = None
+
+    # Source tracking
     source: str | None = None
     source_system: str | None = None
     external_id: str | None = None
-    parent_artifact_id: UUID | None = None
+
+    # Extensible
     metadata: dict | None = None
+    content_hash: str | None = None
     created_at: datetime
-    updated_at: datetime | None = None
+
+    model_config = {"extra": "allow"}
 
 
 class ArtifactList(BaseModel):
@@ -83,22 +105,29 @@ class ArtifactList(BaseModel):
 
     items: list[Artifact]
     total: int
+    limit: int = 50
+    offset: int = 0
 
 
 # --- Relation Types ---
 
 
 class RelationType(BaseModel):
-    """Relation type response model."""
+    """Relation type response model. Mirrors backend RelationTypeResponse.
 
-    id: int
+    Note: Primary key is ``code`` (text), not an integer id.
+    """
+
     code: str
     display_name: str
     description: str | None = None
     inverse_code: str | None = None
+    is_symmetric: bool = False
     is_active: bool = True
-    sort_order: int | None = None
+    sort_order: int = 0
     created_at: datetime
+
+    model_config = {"extra": "allow"}
 
 
 class RelationTypeList(BaseModel):
@@ -112,7 +141,7 @@ class RelationTypeList(BaseModel):
 
 
 class Relation(BaseModel):
-    """Relation response model."""
+    """Relation response model. Mirrors backend RelationResponse."""
 
     id: UUID
     tenant_id: int
@@ -123,28 +152,40 @@ class Relation(BaseModel):
     metadata: dict | None = None
     created_at: datetime
 
+    model_config = {"extra": "allow"}
+
 
 class RelationList(BaseModel):
     """Paginated relation list."""
 
     items: list[Relation]
     total: int
+    limit: int = 50
+    offset: int = 0
 
 
 # --- Embedding Types ---
 
 
 class EmbeddingType(BaseModel):
-    """Embedding type response model."""
+    """Embedding type response model. Mirrors backend EmbeddingTypeResponse.
 
-    id: int
+    Note: Primary key is ``code`` (text), not an integer id.
+    """
+
     code: str
     display_name: str
     provider: str
-    model_name: str | None = None
     dimensions: int
+    distance_metric: str = "cosine"
+    max_tokens: int | None = None
+    description: str | None = None
+    vector_table_name: str | None = None
     is_active: bool = True
+    sort_order: int = 0
     created_at: datetime
+
+    model_config = {"extra": "allow"}
 
 
 class EmbeddingTypeList(BaseModel):
@@ -158,13 +199,16 @@ class EmbeddingTypeList(BaseModel):
 
 
 class Embedding(BaseModel):
-    """Embedding response model."""
+    """Embedding response model. Mirrors backend EmbeddingResponse."""
 
     id: UUID
+    tenant_id: int
     artifact_id: UUID
     embedding_type: str
-    dimensions: int | None = None
     created_at: datetime
+    metadata: dict | None = None
+
+    model_config = {"extra": "allow"}
 
 
 class EmbeddingList(BaseModel):
@@ -172,74 +216,105 @@ class EmbeddingList(BaseModel):
 
     items: list[Embedding]
     total: int
+    limit: int = 50
+    offset: int = 0
 
 
 # --- Search ---
 
 
 class SearchResult(BaseModel):
-    """Individual search result."""
+    """Individual search result. Mirrors backend SearchResult."""
 
     artifact: Artifact
-    score: float | None = None
+    score: float
     rank: int | None = None
+
+    model_config = {"extra": "allow"}
 
 
 class GraphScope(BaseModel):
     """Graph traversal scope for search."""
 
     root_artifact_id: UUID
-    max_depth: int = 2
+    max_depth: int = 3
     relation_types: list[str] | None = None
-    direction: str = "outgoing"
+    direction: str = "both"
 
 
 class SearchResponse(BaseModel):
-    """Unified search response."""
+    """Unified search response. Mirrors backend SearchResponse."""
 
     results: list[SearchResult]
-    strategy: str
     total: int
-    limit: int
-    offset: int
+    query: str | None = None
+    strategy: str | None = None
+
+    model_config = {"extra": "allow"}
 
 
 # --- Context ---
 
 
-class ContextArtifact(BaseModel):
-    """Artifact within a context response."""
+class RelationPathItem(BaseModel):
+    """Single step in a relation path from primary artifact to context artifact."""
 
-    id: UUID
-    artifact_type: str
-    title: str | None = None
-    content: str | None = None
-    source: str | None = None
-    metadata: dict | None = None
-    depth: int | None = None
+    relation_type: str
+    direction: str
 
     model_config = {"extra": "allow"}
 
 
-class ContextRelation(BaseModel):
-    """Relation within a context response."""
+class ContextArtifact(BaseModel):
+    """An artifact in the context with relationship metadata.
 
-    source_id: UUID
-    target_id: UUID
-    relation_type: str
+    Mirrors backend ContextArtifact schema.
+    """
+
+    artifact: Artifact
+    relation_path: list[RelationPathItem] = Field(default_factory=list)
+    distance: int
+    relevance_score: float | None = None
+    inclusion_reason: str | None = None
+
+    model_config = {"extra": "allow"}
+
+
+class ContextHintsApplied(BaseModel):
+    """Summary of how hints affected context results."""
+
+    query_provided: bool = False
+    token_budget_enforced: bool = False
+    temporal_filter_applied: bool = False
+    relevance_filtering_applied: bool = False
+    exclusions_applied: int = 0
+
+    model_config = {"extra": "allow"}
+
+
+class ContextMetadata(BaseModel):
+    """Metadata about the context retrieval operation."""
+
+    depth_used: int
+    artifact_count: int
+    tokens_estimated: int | None = None
+    artifacts_excluded: int = 0
 
     model_config = {"extra": "allow"}
 
 
 class ContextResponse(BaseModel):
-    """RAG context assembly response."""
+    """RAG context assembly response. Mirrors backend ContextResponse.
 
-    root_artifact_id: UUID
+    Contains the primary artifact and contextually relevant artifacts
+    assembled according to the specified policy.
+    """
+
+    artifact: Artifact
+    context: list[ContextArtifact] = Field(default_factory=list)
     policy: str
-    artifacts: list[ContextArtifact]
-    relations: list[ContextRelation]
-    total_artifacts: int
-    max_depth: int | None = None
+    hints_applied: ContextHintsApplied = Field(default_factory=ContextHintsApplied)
+    metadata: ContextMetadata | None = None
 
     model_config = {"extra": "allow"}
 
@@ -248,17 +323,20 @@ class ContextResponse(BaseModel):
 
 
 class ProvenanceEvent(BaseModel):
-    """Provenance event response model."""
+    """Provenance event response model. Mirrors backend ProvenanceEventResponse."""
 
     id: UUID
     tenant_id: int
-    artifact_id: UUID
-    event_type: str
-    actor: str | None = None
-    source_system: str | None = None
-    description: str | None = None
+    entity_type: str
+    entity_id: UUID
+    action: str = "create"
+    actor_type: str
+    actor_id: str | None = None
+    reason: str | None = None
     metadata: dict | None = None
     created_at: datetime
+
+    model_config = {"extra": "allow"}
 
 
 class ProvenanceList(BaseModel):
@@ -266,6 +344,8 @@ class ProvenanceList(BaseModel):
 
     items: list[ProvenanceEvent]
     total: int
+    limit: int = 50
+    offset: int = 0
 
 
 # --- Health ---

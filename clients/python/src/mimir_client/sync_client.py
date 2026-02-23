@@ -493,8 +493,9 @@ class MimirSyncClient:
         provider: str,
         dimensions: int,
         *,
-        model_name: str | None = None,
-        is_active: bool = True,
+        distance_metric: str = "cosine",
+        max_tokens: int | None = None,
+        description: str | None = None,
     ) -> EmbeddingType:
         """Register a new embedding type."""
         body: dict = {
@@ -502,10 +503,12 @@ class MimirSyncClient:
             "display_name": display_name,
             "provider": provider,
             "dimensions": dimensions,
-            "is_active": is_active,
+            "distance_metric": distance_metric,
         }
-        if model_name is not None:
-            body["model_name"] = model_name
+        if max_tokens is not None:
+            body["max_tokens"] = max_tokens
+        if description is not None:
+            body["description"] = description
         resp = self._post("/embedding-types", json=body)
         return EmbeddingType.model_validate(resp.json())
 
@@ -530,6 +533,7 @@ class MimirSyncClient:
         *,
         provider: str = "ollama",
         dimensions: int = 768,
+        distance_metric: str = "cosine",
     ) -> EmbeddingType:
         """Ensure an embedding type exists. No-op if already registered."""
         try:
@@ -541,6 +545,7 @@ class MimirSyncClient:
             display_name=display_name or code.title(),
             provider=provider,
             dimensions=dimensions,
+            distance_metric=distance_metric,
         )
 
     # ── Embeddings ─────────────────────────────────────────────────────
@@ -803,16 +808,32 @@ class MimirSyncClient:
         resp = self._get(f"/provenance/artifact/{artifact_id}", params=params)
         return ProvenanceList.model_validate(resp.json())
 
-    def list_provenance_by_source(
+    def list_provenance(
         self,
-        source_system: str,
         *,
+        entity_type: str | None = None,
+        entity_id: UUID | str | None = None,
+        actor_type: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> ProvenanceList:
-        """List provenance events by source system."""
+        """List provenance events with optional filters.
+
+        Args:
+            entity_type: Filter by entity type (artifact, relation, embedding).
+            entity_id: Filter by entity UUID.
+            actor_type: Filter by actor type (user, system, llm, api_client, migration).
+            limit: Maximum results.
+            offset: Pagination offset.
+        """
         params: dict = {"limit": limit, "offset": offset}
-        resp = self._get(f"/provenance/source/{source_system}", params=params)
+        if entity_type is not None:
+            params["entity_type"] = entity_type
+        if entity_id is not None:
+            params["entity_id"] = str(entity_id)
+        if actor_type is not None:
+            params["actor_type"] = actor_type
+        resp = self._get("/provenance", params=params)
         return ProvenanceList.model_validate(resp.json())
 
     # ── Health ─────────────────────────────────────────────────────────

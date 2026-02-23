@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.0] - 2026-02-22
+
+### Fixed
+- `mimir-client`: **Complete model audit against server schemas** — comprehensive rewrite of all Pydantic response models to match actual backend schemas field-by-field
+  - **Tenant**: removed `updated_at` (server never returns it); `description`, `metadata`, `tenant_type`, `is_active` made optional with defaults
+  - **Artifact**: removed `updated_at` and `artifact_type_id` (server returns `artifact_type` string, not integer ID); added `start_offset`, `end_offset`, `position_metadata`, `content_hash` fields; all content/source fields properly optional
+  - **ArtifactType**: replaced integer `id` with `code` (text) as primary key; added `category`, `sort_order` fields; `description` made optional
+  - **RelationType**: replaced integer `id` with `code` (text) as primary key; added `inverse_code`, `is_symmetric`, `sort_order` fields
+  - **Relation**: removed `relation_type_id` (server returns `relation_type` string); `confidence` and `metadata` made optional
+  - **EmbeddingType**: replaced integer `id` with `code` (text) as primary key; added `distance_metric`, `max_tokens`, `vector_table_name`, `sort_order` fields
+  - **Embedding**: removed `embedding_type_id` (server returns `embedding_type` string); `metadata` made optional
+  - **ContextResponse**: completely rewritten to match backend schema — replaced flat `ContextRelation` with structured `ContextArtifact`, `RelationPathItem`, `ContextHintsApplied`, `ContextMetadata` models
+  - **SearchResponse**: added `query` and `strategy` fields; `SearchResult.rank` made optional
+  - **ProvenanceEvent**: removed `source_system`/`source_id`; replaced with `entity_type`, `entity_id`, `action`, `actor_type`, `actor_id`, `reason` matching V2 append-only schema
+  - All models now use `model_config = {"extra": "allow"}` for forward compatibility with future server fields
+
+### Changed
+- `mimir-client`: `create_embedding_type()` parameters updated to match server schema (`distance_metric`, `max_tokens`, `description` instead of `model_name`, `is_active`)
+- `mimir-client`: `list_provenance_by_source()` replaced with `list_provenance()` supporting server's filter parameters (`entity_type`, `entity_id`, `actor_type`)
+- `mimir-client`: `ContextRelation` removed from exports; replaced by `ContextArtifact`, `ContextHintsApplied`, `ContextMetadata`, `RelationPathItem`
+- `mimir-client`: test fixtures updated to match actual server response shapes (no `updated_at`, no integer IDs for type entities, correct field names)
+- `mimir-client` version bumped to 5.2.0
+
 ## [5.1.0] - 2026-02-22
 
 ### Added
@@ -215,6 +238,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hybrid search with RRF fusion
 - Context assembly endpoint
 
+[5.2.0]: https://github.com/dawsonlp/mimir/compare/v5.1.0...v5.2.0
 [5.1.0]: https://github.com/dawsonlp/mimir/compare/v5.0.5...v5.1.0
 [5.0.5]: https://github.com/dawsonlp/mimir/compare/v5.0.4...v5.0.5
 [5.0.4]: https://github.com/dawsonlp/mimir/compare/v5.0.3...v5.0.4

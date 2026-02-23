@@ -2,6 +2,9 @@
 
 Tests error mapping, URL construction, header injection, and model parsing
 using respx to mock httpx requests.
+
+Test fixtures match the actual server response schemas from
+backend/src/mimir/schemas/ to prevent client-server drift.
 """
 
 import pytest
@@ -30,7 +33,7 @@ from mimir_client import (
 )
 
 
-# --- Fixtures ---
+# --- Fixtures matching actual server response schemas ---
 
 
 SAMPLE_TENANT = {
@@ -42,13 +45,18 @@ SAMPLE_TENANT = {
     "is_active": True,
     "metadata": {},
     "created_at": "2026-02-20T10:00:00Z",
-    "updated_at": "2026-02-20T10:00:00Z",
+}
+
+SAMPLE_TENANT_MINIMAL = {
+    "id": 2,
+    "shortname": "test",
+    "name": "Test",
+    "created_at": "2026-02-20T10:00:00Z",
 }
 
 SAMPLE_ARTIFACT = {
     "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "tenant_id": 1,
-    "artifact_type_id": 1,
     "artifact_type": "document",
     "title": "Test Artifact",
     "content": "Test content",
@@ -57,29 +65,28 @@ SAMPLE_ARTIFACT = {
     "external_id": None,
     "parent_artifact_id": None,
     "metadata": {},
+    "content_hash": "abc123",
     "created_at": "2026-02-20T10:00:00Z",
-    "updated_at": "2026-02-20T10:00:00Z",
 }
 
 SAMPLE_ARTIFACT_TYPE = {
-    "id": 1,
     "code": "document",
     "display_name": "Document",
     "description": None,
     "category": "content",
     "is_active": True,
-    "sort_order": None,
+    "sort_order": 0,
     "created_at": "2026-02-20T10:00:00Z",
 }
 
 SAMPLE_RELATION_TYPE = {
-    "id": 1,
     "code": "derived_from",
     "display_name": "Derived From",
     "description": None,
     "inverse_code": "source_of",
+    "is_symmetric": False,
     "is_active": True,
-    "sort_order": None,
+    "sort_order": 0,
     "created_at": "2026-02-20T10:00:00Z",
 }
 
@@ -95,13 +102,16 @@ SAMPLE_RELATION = {
 }
 
 SAMPLE_EMBEDDING_TYPE = {
-    "id": 1,
-    "code": "nomic",
-    "display_name": "Nomic",
+    "code": "nomic-embed-text",
+    "display_name": "Nomic Embed Text",
     "provider": "ollama",
-    "model_name": "nomic-embed-text",
     "dimensions": 768,
+    "distance_metric": "cosine",
+    "max_tokens": None,
+    "description": None,
+    "vector_table_name": "vec_nomic_embed_text",
     "is_active": True,
+    "sort_order": 0,
     "created_at": "2026-02-20T10:00:00Z",
 }
 
@@ -113,10 +123,9 @@ SAMPLE_SEARCH_RESPONSE = {
             "rank": 1,
         }
     ],
-    "strategy": "fulltext",
     "total": 1,
-    "limit": 20,
-    "offset": 0,
+    "query": "test query",
+    "strategy": "fulltext",
 }
 
 SAMPLE_HEALTH = {
@@ -238,6 +247,19 @@ class TestTenantMethods:
 
     @respx.mock
     @pytest.mark.asyncio
+    async def test_create_tenant_minimal_response(self):
+        """Server may return minimal tenant (only required fields)."""
+        respx.post("http://localhost:38000/tenants").mock(
+            return_value=httpx.Response(201, json=SAMPLE_TENANT_MINIMAL)
+        )
+        async with MimirClient() as client:
+            tenant = await client.create_tenant("test", "Test")
+            assert isinstance(tenant, Tenant)
+            assert tenant.shortname == "test"
+            assert tenant.tenant_type == "environment"
+
+    @respx.mock
+    @pytest.mark.asyncio
     async def test_get_tenant(self):
         respx.get("http://localhost:38000/tenants/1").mock(
             return_value=httpx.Response(200, json=SAMPLE_TENANT)
@@ -319,13 +341,66 @@ class TestArtifactMethods:
     async def test_list_artifacts(self):
         respx.get("http://localhost:38000/artifacts").mock(
             return_value=httpx.Response(
-                200, json={"items": [SAMPLE_ARTIFACT], "total": 1}
+                200,
+                json={"items": [SAMPLE_ARTIFACT], "total": 1, "limit": 50, "offset": 0},
             )
         )
         async with MimirClient(tenant_id=1) as client:
             result = await client.list_artifacts(artifact_type="document")
             assert isinstance(result, ArtifactList)
             assert result.total == 1
+
+
+# --- Artifact Type Methods ---
+
+
+class TestArtifactTypeMethods:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_create_artifact_type(self):
+        respx.post("http://localhost:38000/artifact-types").mock(
+            return_value=httpx.Response(201, json=SAMPLE_ARTIFACT_TYPE)
+        )
+        async with MimirClient(tenant_id=1) as client:
+            at = await client.create_artifact_type("document", "Document")
+            assert isinstance(at, ArtifactType)
+            assert at.code == "document"
+            assert at.display_name == "Document"
+
+
+# --- Relation Type Methods ---
+
+
+class TestRelationTypeMethods:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_relation_type(self):
+        respx.get("http://localhost:38000/relation-types/derived_from").mock(
+            return_value=httpx.Response(200, json=SAMPLE_RELATION_TYPE)
+        )
+        async with MimirClient(tenant_id=1) as client:
+            rt = await client.get_relation_type("derived_from")
+            assert isinstance(rt, RelationType)
+            assert rt.code == "derived_from"
+            assert rt.is_symmetric is False
+
+
+# --- Embedding Type Methods ---
+
+
+class TestEmbeddingTypeMethods:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_embedding_type(self):
+        respx.get("http://localhost:38000/embedding-types/nomic-embed-text").mock(
+            return_value=httpx.Response(200, json=SAMPLE_EMBEDDING_TYPE)
+        )
+        async with MimirClient(tenant_id=1) as client:
+            et = await client.get_embedding_type("nomic-embed-text")
+            assert isinstance(et, EmbeddingType)
+            assert et.code == "nomic-embed-text"
+            assert et.distance_metric == "cosine"
+            assert et.vector_table_name == "vec_nomic_embed_text"
 
 
 # --- Search Methods ---
@@ -342,6 +417,7 @@ class TestSearchMethods:
             result = await client.search_fulltext("test query")
             assert isinstance(result, SearchResponse)
             assert result.strategy == "fulltext"
+            assert result.query == "test query"
             assert len(result.results) == 1
             assert result.results[0].score == 0.85
 
@@ -415,3 +491,46 @@ class TestHeaderInjection:
         async with MimirClient(tenant_id=None) as client:
             await client.get_tenant(1)
             assert "X-Tenant-ID" not in route.calls[0].request.headers
+
+
+# --- Model parsing edge cases ---
+
+
+class TestModelParsing:
+    """Verify models handle server responses with extra/missing optional fields."""
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_artifact_type_no_id_field(self):
+        """ArtifactType has no integer id — code is the primary key."""
+        respx.get("http://localhost:38000/artifact-types/document").mock(
+            return_value=httpx.Response(200, json=SAMPLE_ARTIFACT_TYPE)
+        )
+        async with MimirClient(tenant_id=1) as client:
+            at = await client.get_artifact_type("document")
+            assert at.code == "document"
+            assert not hasattr(at, "id") or "id" not in at.model_fields
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_artifact_no_artifact_type_id(self):
+        """Artifact does not have artifact_type_id — uses artifact_type string."""
+        respx.get("http://localhost:38000/artifacts/a1b2c3d4-e5f6-7890-abcd-ef1234567890").mock(
+            return_value=httpx.Response(200, json=SAMPLE_ARTIFACT)
+        )
+        async with MimirClient(tenant_id=1) as client:
+            a = await client.get_artifact("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+            assert a.artifact_type == "document"
+            assert not hasattr(a, "artifact_type_id") or "artifact_type_id" not in a.model_fields
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_extra_fields_allowed(self):
+        """Models with extra='allow' accept unknown fields without error."""
+        extended_tenant = {**SAMPLE_TENANT, "future_field": "future_value"}
+        respx.get("http://localhost:38000/tenants/1").mock(
+            return_value=httpx.Response(200, json=extended_tenant)
+        )
+        async with MimirClient(tenant_id=1) as client:
+            tenant = await client.get_tenant(1)
+            assert tenant.shortname == "dev"
