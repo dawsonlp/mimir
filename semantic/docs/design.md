@@ -1,355 +1,155 @@
-# Mímir Semantic Layer - Design Document
+# Embedding Generation Library — Architect Design Document
 
-## Overview
-
-The Mímir Semantic Layer is a Python client library that provides intelligent context assembly and semantic operations built on top of the Mímir Storage API. It maintains strict separation between storage primitives (artifacts, relations, embeddings) and semantic interpretation (context, lineage, relevance).
-
----
-
-## Architecture
-
-### Layer Separation
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Application Layer                         │
-│  RAG pipelines, chat applications, analysis tools            │
-│  Uses mimir_semantic to compose intelligent context          │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ Python imports
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Semantic Layer                             │
-│  mimir_semantic package                                      │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐   │
-│  │   Client    │ │   Context   │ │       Search        │   │
-│  │  (REST)     │ │  Assembly   │ │  (semantic/hybrid)  │   │
-│  └─────────────┘ └─────────────┘ └─────────────────────┘   │
-│  Understands meaning, composes primitives, manages tokens   │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ HTTP/REST (only path)
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Storage Layer                             │
-│  Mímir Backend API (http://localhost:38000)                  │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────────┐  │
-│  │Artifacts │ │Relations │ │Embeddings│ │  Provenance   │  │
-│  └──────────┘ └──────────┘ └──────────┘ └───────────────┘  │
-│  Pure storage, no interpretation, stable API contract       │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Key Constraint
-
-**The Semantic Layer ONLY communicates with the Storage Layer via REST API.**
-
-This constraint ensures:
-1. Clean architectural boundary
-2. Storage layer can evolve independently
-3. Semantic layer could be moved to a separate service
-4. No temptation to bypass the API for "optimization"
+**Author**: Mimir Architecture Team
+**Date**: 2026-03-04
+**Status**: Draft
+**Prerequisites**: Mimir Backend API v5.2.0, `mimir-client` v5.2.0 (PyPI)
 
 ---
 
-## Core Components
+## 1. Purpose
 
-### 1. MimirClient
+Mimir stores embeddings but does not generate them — by design the backend is model-agnostic. The `mimir-client` sends embeddings to the API but does not generate them. There is no shared mechanism for calling embedding providers, validating dimensions, or batching requests.
 
-The primary interface for all storage operations. Wraps the REST API with Pythonic methods.
+This library fills that single gap: **given text and an embedding type, return a vector.**
 
-```python
-class MimirClient:
-    """Client for Mímir Storage API.
-    
-    All storage operations go through this client. It provides:
-    - Typed Python methods for all API endpoints
-    - Automatic tenant ID header injection
-    - Documentation links in every method
-    - Connection pooling via httpx
-    """
-    
-    def __init__(
-        self,
-        base_url: str = "http://localhost:38000",
-        docs_url: str | None = None,
-        tenant_id: int | None = None,
-    ): ...
-    
-    # Artifact operations
-    async def create_artifact(...) -> Artifact
-    async def get_artifact(...) -> Artifact
-    async def list_artifacts(...) -> ArtifactList
-    
-    # Relation operations
-    async def create_relation(...) -> Relation
-    async def get_relations(...) -> RelationList
-    
-    # Embedding operations
-    async def create_embedding(...) -> Embedding
-    async def find_similar(...) -> SimilarityResults
-    
-    # Search operations
-    async def semantic_search(...) -> SearchResults
-    async def fulltext_search(...) -> SearchResults
-    async def hybrid_search(...) -> SearchResults
-```
-
-### 2. Context Assembly
-
-High-level operations for gathering relevant context.
-
-```python
-class ContextAssembler:
-    """Assembles context from multiple artifacts based on policies."""
-    
-    async def gather_context(
-        artifact_id: UUID,
-        depth: int = 2,
-        policy: ContextPolicy = "derived_lineage",
-        token_budget: int | None = None,
-        include_types: list[str] | None = None,
-        exclude_types: list[str] | None = None,
-    ) -> EnrichedContext: ...
-    
-    async def gather_for_query(
-        query: str,
-        query_vector: list[float],
-        limit: int = 10,
-        token_budget: int | None = None,
-    ) -> EnrichedContext: ...
-```
-
-### 3. Token Budgeting
-
-Manages context size for LLM prompts.
-
-```python
-class TokenBudget:
-    """Manages token allocation for context windows."""
-    
-    def __init__(self, budget: int, model: str = "gpt-4"):
-        self.budget = budget
-        self.tokenizer = get_tokenizer(model)
-    
-    def estimate_tokens(self, text: str) -> int: ...
-    def can_fit(self, text: str) -> bool: ...
-    def allocate(self, artifacts: list[Artifact]) -> list[Artifact]: ...
-```
+This is mechanism, not policy. The library does not prescribe how to ingest, how to retrieve, how to assemble context, or how to chunk. Applications compose this library with `mimir-client` to implement their own workflows.
 
 ---
 
-## Design Decisions
+## 2. System Context
 
-### D1: REST-Only Communication
-
-**Decision**: The semantic layer never accesses the database directly.
-
-**Rationale**:
-- Clean architectural boundary
-- Storage API becomes the contract
-- Enables independent evolution
-- Could deploy semantic layer as separate service
-
-**Consequence**: Some operations may require multiple API calls. If this becomes a performance issue, we request API enhancements rather than bypassing the API.
-
-### D2: Documentation-Transparent Docstrings
-
-**Decision**: Every client method documents the underlying API endpoint.
-
-**Rationale**:
-- Developers can see exactly what API calls happen
-- Easy to debug by reproducing in curl
-- API documentation is single source of truth
-- Helps identify when API enhancements are needed
-
-**Implementation**:
-```python
-async def create_artifact(self, ...) -> Artifact:
-    """Create a new artifact.
-    
-    API Reference
-    -------------
-    POST /artifacts
-    See: {docs_url}#/Artifacts/create_artifact_artifacts_post
-    
-    Request Headers:
-        X-Tenant-ID: {tenant_id}
-    
-    ...
-    """
+```
+┌──────────────────────────────────────────────┐
+│            Application                        │
+│  (ingestion scripts, RAG pipelines,           │
+│   chat servers, analysis tools)               │
+└──────┬──────────────────────┬────────────────┘
+       │                      │
+       │ vectors              │ artifacts, relations,
+       │                      │ embeddings, search
+       ▼                      ▼
+┌──────────────┐    ┌──────────────────────────┐
+│  Embedding   │    │     mimir-client          │
+│  Library     │    │     (PyPI)                │
+└──────┬───────┘    └──────────┬───────────────┘
+       │                       │
+       │ HTTP                  │ HTTP/REST
+       ▼                       ▼
+┌──────────────┐    ┌──────────────────────────┐
+│  Embedding   │    │     Mimir Backend API     │
+│  Providers   │    │                           │
+│  (Ollama,    │    │                           │
+│   OpenAI)    │    │                           │
+└──────────────┘    └──────────────────────────┘
 ```
 
-### D3: Configurable URLs
-
-**Decision**: API and documentation URLs are configurable.
-
-**Rationale**:
-- Development uses localhost
-- Production uses deployed URLs
-- Documentation may be hosted separately
-
-**Configuration Sources**:
-1. Constructor arguments
-2. Environment variables (MIMIR_API_URL, MIMIR_DOCS_URL)
-3. `.env` file
-
-### D4: Async-First
-
-**Decision**: All client methods are async.
-
-**Rationale**:
-- HTTP operations are I/O bound
-- Enables concurrent requests
-- Matches modern Python async patterns
-- Can gather multiple artifacts in parallel
-
-**Synchronous Wrapper** (if needed):
-```python
-def sync_get_artifact(self, artifact_id: UUID) -> Artifact:
-    """Synchronous wrapper for get_artifact."""
-    return asyncio.run(self.get_artifact(artifact_id))
-```
-
-### D5: Pydantic Models Mirror API Schemas
-
-**Decision**: Client uses Pydantic models that match API response schemas.
-
-**Rationale**:
-- Type safety
-- IDE autocomplete
-- Validation on response parsing
-- Documentation generation
-
-**Synchronization**: Models are manually maintained to match API. Future enhancement could auto-generate from OpenAPI spec.
+The embedding library and `mimir-client` are **peers**, not layered. The application uses both directly. The embedding library does not wrap or depend on `mimir-client` at runtime — it only needs `mimir-client` if the application wants dimension validation against registered embedding types.
 
 ---
 
-## API Request Process
+## 3. What the Library Does
 
-When the semantic layer needs functionality not available in the Storage API:
+1. **Provider abstraction**: A uniform interface for generating embeddings from text, regardless of which provider (Ollama, OpenAI, etc.) is behind it.
 
-1. **Document the need** in `docs/api-requests.md`
-2. **Implement workaround** using existing endpoints
-3. **Propose API enhancement** to storage team
-4. **Update client** when enhancement is released
+2. **Batch support**: Generate embeddings for multiple texts in a single call, using the provider's native batch capabilities where available.
 
-Example:
-
-```markdown
-# docs/api-requests.md
-
-## Request: GET /artifacts/{id}/lineage
-
-**Date**: 2026-02-01
-**Status**: Proposed
-
-### Need
-Retrieve full provenance chain from artifact to its sources.
-
-### Current Workaround
-Multiple calls to /relations + /artifacts, traversing manually.
-
-### Proposed Endpoint
-GET /artifacts/{id}/lineage?depth=3
-
-### Response
-{
-  "artifact": {...},
-  "lineage": [
-    {"artifact": {...}, "relation_type": "derived_from", "depth": 1},
-    ...
-  ]
-}
-
-### Priority
-Medium - current workaround works but inefficient for deep lineage.
-```
+3. **Dimension validation**: Given an embedding type code, look up the expected dimensions (via `mimir-client`) and validate that the returned vector matches. This is optional — the library works without `mimir-client` if the caller knows the expected dimensions.
 
 ---
 
-## Testing Strategy
+## 4. What the Library Does NOT Do
 
-### Unit Tests
-- Mock httpx responses
-- Test client method parsing
-- Test token budgeting logic
-
-### Integration Tests
-- Require running Mímir API
-- Test full workflows
-- Marked with `@pytest.mark.integration`
-
-### Test Fixtures
-```python
-@pytest.fixture
-async def client():
-    """Provides configured client for tests."""
-    client = MimirClient.from_env()
-    yield client
-    await client.close()
-
-@pytest.fixture
-async def test_tenant(client):
-    """Creates a test tenant, cleans up after."""
-    tenant = await client.create_tenant(
-        shortname=f"test-{uuid4().hex[:8]}",
-        name="Test Tenant",
-    )
-    yield tenant
-    # Tenant persists (append-only), no cleanup needed
-```
+- Does not store embeddings (use `mimir-client` for that)
+- Does not create artifacts or relations (use `mimir-client` for that)
+- Does not search or retrieve (use `mimir-client` for that)
+- Does not chunk content (the application decides what to embed)
+- Does not assemble context or manage token budgets (application concern)
+- Does not call LLMs for inference (application concern)
+- Does not prescribe ingestion workflows (application concern)
 
 ---
 
-## Package Structure
+## 5. Interface
 
-```
-semantic/
-├── pyproject.toml
-├── README.md
-├── docs/
-│   ├── design.md           # This document
-│   └── api-requests.md     # Requested API enhancements
-├── src/
-│   └── mimir_semantic/
-│       ├── __init__.py     # Package exports
-│       ├── client.py       # MimirClient
-│       ├── config.py       # Settings, environment loading
-│       ├── models.py       # Pydantic models
-│       ├── exceptions.py   # Custom exceptions
-│       ├── context/
-│       │   ├── __init__.py
-│       │   ├── assembler.py    # ContextAssembler
-│       │   ├── policies.py     # Context inclusion policies
-│       │   └── budgeting.py    # Token budget management
-│       └── search/
-│           ├── __init__.py
-│           ├── semantic.py     # Semantic search helpers
-│           └── hybrid.py       # Hybrid search helpers
-└── tests/
-    ├── conftest.py
-    ├── test_client.py
-    ├── test_models.py
-    └── integration/
-        ├── test_artifacts.py
-        └── test_context.py
-```
+The library exposes one primary interface:
+
+**Embed text**: Given text and provider configuration, return a vector.
+
+- Input: text (string), provider identifier
+- Output: vector (list of floats), model name, token count
+- Batch variant: list of texts in, list of vectors out
+
+**Validate dimensions** (optional): Given a vector and an embedding type code, confirm the dimensions match what Mimir expects.
+
+- Input: vector, embedding type code
+- Output: pass or fail with expected vs actual dimensions
+- Requires: `mimir-client` instance to look up embedding type metadata
 
 ---
 
-## Future Considerations
+## 6. Constraints
 
-### F1: OpenAPI Code Generation
-Could auto-generate client methods and models from OpenAPI spec. Pros: always in sync. Cons: less readable, harder to add semantic methods.
+### C1: No Vendor SDK Dependencies
 
-### F2: Caching Layer
-Could cache artifact lookups. Must be careful with cache invalidation since we don't control when storage changes.
+Provider implementations use raw HTTP calls (via `httpx`). No `openai` package, no `ollama` package. The embedding APIs are simple enough that thin HTTP wrappers are clearer, lighter, and avoid version conflicts.
 
-### F3: Streaming Support
-For large context assembly, could stream results. Requires API support for streaming responses.
+### C2: Provider Independence
 
-### F4: GraphQL Gateway
-Could expose semantic operations as GraphQL. Natural fit for graph traversal queries.
+Adding a new provider does not require changes to existing providers or to applications using the library. Providers are pluggable.
+
+### C3: No State
+
+The library is stateless. It does not cache embeddings, track what has been embedded, or maintain any persistent state. Mimir is the single source of truth for stored embeddings.
+
+### C4: Optional mimir-client Dependency
+
+The library can generate embeddings without `mimir-client`. Dimension validation against Mimir's embedding type registry is an optional feature that requires a `mimir-client` instance. This keeps the library usable in contexts where Mimir is not involved (e.g., testing, standalone embedding generation).
+
+---
+
+## 7. Trade-offs
+
+### T1: Raw HTTP vs Vendor SDKs
+
+| Approach | Advantages | Disadvantages |
+|----------|-----------|---------------|
+| **Raw HTTP** (chosen) | No dependency conflicts; minimal footprint; full control; providers change APIs rarely | Must maintain HTTP integration code |
+| **Vendor SDKs** | Slightly less code; SDK handles edge cases | Dependency version conflicts; heavyweight; SDK version churn |
+
+**Decision**: Raw HTTP. The embedding APIs (Ollama `/api/embed`, OpenAI `/v1/embeddings`) are stable, simple JSON-in/JSON-out endpoints.
+
+### T2: Peer to mimir-client vs Layer on Top
+
+| Approach | Advantages | Disadvantages |
+|----------|-----------|---------------|
+| **Peer** (chosen) | Each can be used independently; no forced coupling; simpler dependency graph | Application must compose them manually |
+| **Layer on top** | Convenience: embed-and-store in one call | Forces mimir-client dependency; library becomes policy (it decides to store) |
+
+**Decision**: Peer. The application calls the embedding library to get vectors, then calls `mimir-client` to store them. This is two lines of code, not a hardship. An embed-and-store convenience belongs in the application, not in the mechanism library.
+
+---
+
+## 8. Relation to Other Documents
+
+| Document | Relationship |
+|----------|-------------|
+| `docs/roadmap.md` | Priority 1 — this is the next work item |
+| `docs/embedding-architecture-design.md` | Backend embedding type system this library validates against |
+| `clients/python/docs/design.md` | Peer library (`mimir-client`) that applications compose with this |
+| `semantic/docs/use-cases.md` | Business use cases that applications (not this library) will implement |
+
+---
+
+## 9. What This Document Does NOT Specify
+
+- Class names, method signatures, module structure
+- Provider-specific HTTP details
+- Configuration format
+- Error types
+- Test strategy
+
+The test: this design could be implemented in Python, Go, or TypeScript, and all implementations would satisfy the document.
 
 ---
 
@@ -357,4 +157,6 @@ Could expose semantic operations as GraphQL. Natural fit for graph traversal que
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 0.1.0 | 2026-02-02 | Initial design |
+| 0.1.0 | 2026-02-02 | Initial "semantic layer" design (over-scoped) |
+| 0.2.0 | 2026-03-04 | Rewritten as architect-level design for semantic layer |
+| 0.3.0 | 2026-03-04 | Reduced to embedding generation library only per mechanism-over-policy review |
