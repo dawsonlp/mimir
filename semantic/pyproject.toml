@@ -1,42 +1,33 @@
-[tool.poetry]
-name = "mimir-semantic"
+[project]
+name = "mimir-embeddings"
 version = "0.1.0"
-description = "Mímir Semantic Layer - Python client library for intelligent context assembly and semantic operations"
-authors = ["Development Team"]
+description = "Embedding generation library for Mimir — provider abstraction over Ollama and OpenAI"
+authors = [{name = "Development Team"}]
 readme = "README.md"
-license = "MIT"
-packages = [{include = "mimir_semantic", from = "src"}]
+requires-python = ">=3.13"
 
-[tool.poetry.dependencies]
-python = "^3.13"
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+]
 
-# HTTP client for API communication
-httpx = "^0.28"
-
-# Data validation and serialization
-pydantic = "^2.0"
-pydantic-settings = "^2.0"
-
-# Environment configuration
-python-dotenv = "^1.0"
-
-[tool.poetry.group.dev.dependencies]
-# Testing
-pytest = "*"
-pytest-asyncio = "*"
-
-# Code quality
-black = "*"
-ruff = "*"
-mypy = "*"
-
-# Documentation
-sphinx = "*"
-sphinx-rtd-theme = "*"
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "respx",
+    "hypothesis",
+    "ruff",
+    "mypy",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mimir_embeddings"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
@@ -44,7 +35,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
-    "integration: tests requiring live Mimir API"
+    "integration: tests requiring running Ollama instance"
 ]
 
 [tool.mypy]
@@ -66,7 +57,7 @@ select = ["E", "W", "F", "I", "UP", "B", "SIM"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["mimir_semantic"]
+known-first-party = ["mimir_embeddings"]
 
 [tool.black]
 target-version = ["py313"]

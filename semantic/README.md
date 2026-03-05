@@ -1,174 +1,97 @@
-# Mímir Semantic Layer
+# mimir-embeddings
 
-Python client library for intelligent context assembly and semantic operations built on the Mímir Storage API.
+Embedding generation library for Mimir. Provides provider abstraction over Ollama and OpenAI for converting text into vectors.
 
-## Overview
-
-The Semantic Layer provides high-level operations for:
-
-- **Context Assembly**: Gather related artifacts using lineage, similarity, and custom policies
-- **Semantic Search**: Find relevant content using vector similarity and hybrid search
-- **Token Budgeting**: Manage context size for LLM prompts
-- **Provenance Tracing**: Navigate artifact lineage and derivation chains
-
-This library communicates with Mímir exclusively via its REST API, maintaining a clean separation between storage primitives and semantic interpretation.
+This is mechanism, not policy. The library does not prescribe how to ingest, retrieve, chunk, or assemble context. Applications compose this library with `mimir-client` to implement their own workflows.
 
 ## Installation
 
 ```bash
 cd semantic
-poetry install
+uv venv .venv
+source .venv/bin/activate
+uv pip install -e ".[dev]"
 ```
 
-## Quick Start
+## Usage
+
+### Ollama (local)
 
 ```python
-import asyncio
-from mimir_semantic import MimirClient
+from mimir_embeddings import OllamaProvider, OllamaConfig
 
-async def main():
-    # Create client (reads from environment or use explicit config)
-    client = MimirClient(
-        base_url="http://localhost:38000",
-        tenant_id=1,
-    )
-    
-    # Or from environment variables
-    client = MimirClient.from_env()
-    
-    # Get an artifact
-    artifact = await client.get_artifact("abc123-...")
-    
-    # Gather context for RAG
-    context = await client.gather_context(
-        artifact_id="abc123-...",
-        depth=2,
-        token_budget=4000,
-    )
-    
-    await client.close()
+async with OllamaProvider(OllamaConfig()) as provider:
+    result = await provider.generate("Hello, world!")
+    print(f"Dimensions: {result.dimensions}")
+    print(f"Vector: {result.embedding[:5]}...")
+```
 
-asyncio.run(main())
+### OpenAI
+
+```python
+from mimir_embeddings import OpenAIProvider, OpenAIConfig
+
+config = OpenAIConfig(api_key="sk-...")
+async with OpenAIProvider(config) as provider:
+    result = await provider.generate("Hello, world!")
+    print(f"Dimensions: {result.dimensions}")
+    print(f"Tokens used: {result.token_count}")
+```
+
+### Batch generation
+
+```python
+results = await provider.generate_batch(["text one", "text two", "text three"])
+# len(results) == 3, each with correct dimensions
+```
+
+### With mimir-client (application code)
+
+```python
+from mimir_embeddings import OllamaProvider, OllamaConfig
+from mimir_client import MimirClient
+
+async def ingest_document(text: str, artifact_id, tenant_id: int):
+    async with OllamaProvider(OllamaConfig()) as provider:
+        result = await provider.generate(text)
+
+    async with MimirClient(api_url="http://localhost:38000", tenant_id=tenant_id) as client:
+        await client.create_embedding(
+            artifact_id=artifact_id,
+            embedding_type_code="nomic-embed-text",
+            embedding=result.embedding,
+        )
 ```
 
 ## Configuration
 
-### Environment Variables
+Configuration uses environment variables with provider-specific prefixes:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `MIMIR_API_URL` | Base URL for Mímir Storage API | `http://localhost:38000` |
-| `MIMIR_DOCS_URL` | Base URL for API documentation | `{MIMIR_API_URL}/docs` |
-| `MIMIR_TENANT_ID` | Default tenant ID | (none) |
+| Variable | Provider | Default |
+|----------|----------|---------|
+| `MIMIR_EMBEDDINGS_OLLAMA_BASE_URL` | Ollama | `http://localhost:11434` |
+| `MIMIR_EMBEDDINGS_OLLAMA_MODEL` | Ollama | `nomic-embed-text` |
+| `MIMIR_EMBEDDINGS_OLLAMA_DIMENSIONS` | Ollama | `768` |
+| `MIMIR_EMBEDDINGS_OLLAMA_TIMEOUT` | Ollama | `30.0` |
+| `MIMIR_EMBEDDINGS_OPENAI_API_KEY` | OpenAI | (required) |
+| `MIMIR_EMBEDDINGS_OPENAI_BASE_URL` | OpenAI | `https://api.openai.com/v1` |
+| `MIMIR_EMBEDDINGS_OPENAI_MODEL` | OpenAI | `text-embedding-3-small` |
+| `MIMIR_EMBEDDINGS_OPENAI_DIMENSIONS` | OpenAI | `1536` |
+| `MIMIR_EMBEDDINGS_OPENAI_TIMEOUT` | OpenAI | `30.0` |
 
-### Client Initialization
+All values can be overridden via constructor parameters.
 
-```python
-# Explicit configuration
-client = MimirClient(
-    base_url="https://api.mimir.example.com",
-    docs_url="https://docs.mimir.example.com",
-    tenant_id=42,
-)
+## Testing
 
-# From environment
-client = MimirClient.from_env()
+```bash
+# Unit tests (no external dependencies)
+pytest tests/unit -v
+
+# Integration tests (requires Ollama with nomic-embed-text)
+pytest tests/integration -v -m integration
 ```
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│           Application Layer                      │
-│   Your code, RAG pipelines, chat applications   │
-└────────────────┬────────────────────────────────┘
-                 │ uses
-                 ▼
-┌─────────────────────────────────────────────────┐
-│         Semantic Layer (this library)           │
-│   Context assembly, search, token budgeting     │
-│   mimir_semantic.MimirClient                    │
-└────────────────┬────────────────────────────────┘
-                 │ HTTP/REST
-                 ▼
-┌─────────────────────────────────────────────────┐
-│           Storage Layer (Mímir API)             │
-│   Artifacts, Relations, Embeddings, Provenance  │
-│   http://localhost:38000                        │
-└─────────────────────────────────────────────────┘
-```
-
-## Key Design Principles
-
-1. **API-Only Access**: All storage operations go through the REST API. No direct database access.
-
-2. **Documentation Transparency**: Every method documents the underlying API endpoint with links.
-
-3. **Configurable URLs**: API and documentation URLs are configurable for different deployments.
-
-4. **Storage Layer Ignorance**: The semantic layer never bypasses the storage API. If an operation can't be done through the API, we request an API enhancement.
 
 ## Documentation
 
-Each client method includes comprehensive documentation:
-
-```python
->>> help(client.create_artifact)
-
-create_artifact(artifact_type, title, content=None, metadata=None)
-
-    Create a new artifact in the storage layer.
-    
-    API Reference
-    -------------
-    POST /artifacts
-    See: http://localhost:38000/docs#/Artifacts/create_artifact_artifacts_post
-    
-    ...
-```
-
-## Project Structure
-
-```
-semantic/
-├── pyproject.toml          # Package configuration
-├── README.md               # This file
-├── docs/
-│   ├── design.md           # Architecture and design decisions
-│   └── api-requests.md     # Requested Storage API changes
-├── src/
-│   └── mimir_semantic/
-│       ├── __init__.py     # Package exports
-│       ├── client.py       # MimirClient - main entry point
-│       ├── config.py       # Configuration management
-│       ├── models.py       # Pydantic models
-│       ├── context/        # Context assembly
-│       ├── search/         # Semantic search helpers
-│       └── exceptions.py   # Custom exceptions
-└── tests/
-    ├── conftest.py         # Test fixtures
-    ├── test_client.py      # Client tests
-    └── test_context.py     # Context assembly tests
-```
-
-## Development
-
-```bash
-# Install with dev dependencies
-cd semantic
-poetry install --with dev
-
-# Run tests (requires running Mímir API)
-poetry run pytest
-
-# Format code
-poetry run black src tests
-poetry run ruff check --fix src tests
-
-# Type checking
-poetry run mypy src
-```
-
-## License
-
-MIT
+- [Architect Design](docs/design.md) — scope, constraints, trade-offs
+- [Technical Design](docs/technical-design.md) — implementation decisions, module structure, testing strategy
