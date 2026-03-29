@@ -1,10 +1,10 @@
-"""MimirClient — async HTTP client for the Mímir Knowledge Graph API (v5).
+"""MimirClient -- async HTTP client for the Mimir Knowledge Graph API (v5).
 
-Covers all Mímir REST endpoints with typed responses, automatic tenant header
-injection, and structured error handling.
+Covers all Mimir REST endpoints with typed responses, automatic tenant header
+injection, lazy shortname resolution, and structured error handling.
 
 Usage:
-    async with MimirClient(api_url="http://localhost:38000", tenant_id=1) as client:
+    async with MimirClient(api_url="http://localhost:38000", tenant="rademo1") as client:
         tenant = await client.get_tenant(1)
         artifacts = await client.list_artifacts(artifact_type="document")
 
@@ -16,17 +16,20 @@ Or with settings from environment:
 
 from __future__ import annotations
 
+import asyncio
+import warnings
 from uuid import UUID
 
 import httpx
 
 from mimir_client.config import MimirClientSettings
 from mimir_client.exceptions import (
+    MimirConflictError,
     MimirConnectionError,
     MimirError,
     MimirNotFoundError,
-    MimirConflictError,
     MimirServerError,
+    MimirTenantError,
     MimirValidationError,
 )
 from mimir_client.models import (
@@ -51,32 +54,60 @@ from mimir_client.models import (
     TenantList,
 )
 
-# Re-export models used as return types so callers can type-check
 __all__ = ["MimirClient"]
 
 
 class MimirClient:
-    """Async HTTP client for the Mímir Knowledge Graph API.
+    """Async HTTP client for the Mimir Knowledge Graph API.
 
     Args:
-        api_url: Base URL of the Mímir API (e.g. ``http://localhost:38000``).
-        tenant_id: Default tenant ID injected as ``X-Tenant-ID`` header.
-            Can be ``None`` for tenant management calls only.
+        api_url: Base URL of the Mimir API (e.g. ``http://localhost:38000``).
+        tenant: Tenant shortname (e.g. ``"rademo1"``). Resolved lazily to
+            the integer ID required by the backend on first tenant-scoped
+            request.
         timeout: Request timeout in seconds.
+        tenant_id: **Deprecated.** Integer tenant ID. Will be removed in
+            v6.0.0. Use ``tenant`` (shortname string) instead.
     """
 
     def __init__(
         self,
         api_url: str = "http://localhost:38000",
-        tenant_id: int | None = None,
+        tenant: str | None = None,
         timeout: float = 30.0,
+        *,
+        tenant_id: int | None = None,
     ):
+        if tenant is not None and tenant_id is not None:
+            raise ValueError(
+                "Cannot provide both 'tenant' and 'tenant_id'. "
+                "Use 'tenant' (shortname string). "
+                "'tenant_id' is deprecated and will be removed in v6.0.0."
+            )
+
         self._api_url = api_url.rstrip("/")
-        self._tenant_id = tenant_id
         self._timeout = timeout
-        headers = {}
+        self._resolve_lock = asyncio.Lock()
+
+        headers: dict[str, str] = {}
+
         if tenant_id is not None:
+            warnings.warn(
+                "tenant_id parameter is deprecated and will be removed in v6.0.0. "
+                "Use tenant (shortname string) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            self._tenant: str | None = None
+            self._resolved_tenant_id: int | None = tenant_id
             headers["X-Tenant-ID"] = str(tenant_id)
+        elif tenant is not None:
+            self._tenant = tenant
+            self._resolved_tenant_id = None
+        else:
+            self._tenant = None
+            self._resolved_tenant_id = None
+
         self._client = httpx.AsyncClient(
             base_url=self._api_url,
             headers=headers,
@@ -88,17 +119,44 @@ class MimirClient:
         """Create a client from a ``MimirClientSettings`` instance."""
         return cls(
             api_url=settings.api_url,
-            tenant_id=settings.tenant_id,
+            tenant=settings.tenant,
             timeout=settings.timeout,
+            tenant_id=settings.tenant_id,
         )
+
+    # ── Properties ─────────────────────────────────────────────────────
+
+    @property
+    def tenant(self) -> str | None:
+        """The tenant shortname, or ``None`` if not set."""
+        return self._tenant
+
+    @tenant.setter
+    def tenant(self, value: str | None):
+        self._tenant = value
+        self._resolved_tenant_id = None
+        self._client.headers.pop("X-Tenant-ID", None)
 
     @property
     def tenant_id(self) -> int | None:
-        return self._tenant_id
+        """The resolved integer tenant ID, or ``None`` if not yet resolved.
+
+        .. deprecated:: 5.3.0
+            Use :attr:`tenant` (shortname string) instead.
+            Will be removed in v6.0.0.
+        """
+        return self._resolved_tenant_id
 
     @tenant_id.setter
     def tenant_id(self, value: int | None):
-        self._tenant_id = value
+        warnings.warn(
+            "tenant_id is deprecated and will be removed in v6.0.0. "
+            "Use tenant (shortname string) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._tenant = None
+        self._resolved_tenant_id = value
         if value is not None:
             self._client.headers["X-Tenant-ID"] = str(value)
         else:
@@ -114,10 +172,54 @@ class MimirClient:
     async def __aexit__(self, *args):
         await self.close()
 
+    # ── Lazy resolution ────────────────────────────────────────────────
+
+    async def _resolve_shortname(self, shortname: str) -> Tenant:
+        """Resolve a tenant shortname to a Tenant via the backend API."""
+        try:
+            response = await self._client.request(
+                "GET", f"/tenants/by-shortname/{shortname}"
+            )
+        except httpx.ConnectError as exc:
+            raise MimirConnectionError(
+                f"Cannot connect to {self._api_url}"
+            ) from exc
+        except httpx.TimeoutException as exc:
+            raise MimirConnectionError(
+                f"Request timed out resolving tenant '{shortname}'"
+            ) from exc
+
+        if response.status_code == 404:
+            raise MimirTenantError(
+                f"Tenant shortname '{shortname}' not found. "
+                "Create the tenant first or check the shortname."
+            )
+        if response.status_code >= 400:
+            try:
+                body = response.json()
+                detail = body.get("detail", response.text)
+            except Exception:
+                detail = response.text
+            raise MimirError(f"HTTP {response.status_code}: {detail}")
+
+        return Tenant.model_validate(response.json())
+
+    async def _ensure_resolved(self):
+        """Ensure the tenant shortname has been resolved to an integer ID."""
+        if self._tenant is not None and self._resolved_tenant_id is None:
+            async with self._resolve_lock:
+                if self._resolved_tenant_id is not None:
+                    return
+                tenant = await self._resolve_shortname(self._tenant)
+                self._resolved_tenant_id = tenant.id
+                self._client.headers["X-Tenant-ID"] = str(tenant.id)
+
     # ── Internal request handling ──────────────────────────────────────
 
     async def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         """Execute an HTTP request with error mapping."""
+        await self._ensure_resolved()
+
         try:
             response = await self._client.request(method, path, **kwargs)
         except httpx.ConnectError as exc:
@@ -128,7 +230,6 @@ class MimirClient:
         if response.status_code < 400:
             return response
 
-        # Extract error detail
         try:
             body = response.json()
             detail = body.get("detail", response.text)
@@ -214,17 +315,16 @@ class MimirClient:
     ) -> Tenant:
         """Ensure a tenant exists. Returns existing or creates new.
 
-        Updates the client's ``tenant_id`` to match.
+        Sets the client's tenant context (both shortname and resolved
+        integer ID) to the resolved or created tenant.
         """
         try:
             tenant = await self.get_tenant_by_shortname(shortname)
-            self.tenant_id = tenant.id
-            return tenant
         except MimirNotFoundError:
-            pass
-
-        tenant = await self.create_tenant(shortname, name)
-        self.tenant_id = tenant.id
+            tenant = await self.create_tenant(shortname, name)
+        self._tenant = shortname
+        self._resolved_tenant_id = tenant.id
+        self._client.headers["X-Tenant-ID"] = str(tenant.id)
         return tenant
 
     # ── Artifact Types ─────────────────────────────────────────────────
@@ -266,7 +366,7 @@ class MimirClient:
         return ArtifactTypeList.model_validate(resp.json())
 
     async def update_artifact_type(self, code: str, **fields) -> ArtifactType:
-        """Update an artifact type. Accepts: display_name, description, category, is_active, sort_order."""
+        """Update an artifact type."""
         resp = await self._patch(f"/artifact-types/{code}", json=fields)
         return ArtifactType.model_validate(resp.json())
 
@@ -384,7 +484,7 @@ class MimirClient:
         return RelationTypeList.model_validate(resp.json())
 
     async def update_relation_type(self, code: str, **fields) -> RelationType:
-        """Update a relation type. Accepts: display_name, description, inverse_code, is_active, sort_order."""
+        """Update a relation type."""
         resp = await self._patch(f"/relation-types/{code}", json=fields)
         return RelationType.model_validate(resp.json())
 
@@ -424,11 +524,7 @@ class MimirClient:
         confidence: float | None = None,
         metadata: dict | None = None,
     ) -> Relation:
-        """Create a relation between two artifacts.
-
-        Returns the relation. Raises ``MimirConflictError`` if the relation
-        already exists (same source, target, type).
-        """
+        """Create a relation between two artifacts."""
         body: dict = {
             "source_id": str(source_id),
             "target_id": str(target_id),
@@ -472,12 +568,7 @@ class MimirClient:
         *,
         direction: str | None = None,
     ) -> RelationList:
-        """Get all relations for an artifact.
-
-        Args:
-            artifact_id: The artifact UUID.
-            direction: ``'incoming'``, ``'outgoing'``, or ``'both'`` (default).
-        """
+        """Get all relations for an artifact."""
         params: dict = {}
         if direction is not None:
             params["direction"] = direction
@@ -608,13 +699,7 @@ class MimirClient:
         relation_type: str | None = None,
         relation_direction: str | None = None,
     ) -> SearchResponse:
-        """Unified search. Strategy is inferred from parameters:
-
-        - ``query`` only → fulltext
-        - ``query_vector`` (+ ``embedding_type``) → semantic
-        - ``query`` + ``query_vector`` → hybrid
-        - ``similar_to`` (+ ``embedding_type``) → similar
-        """
+        """Unified search."""
         body: dict = {"limit": limit, "offset": offset}
         if query is not None:
             body["query"] = query
@@ -648,111 +733,35 @@ class MimirClient:
         resp = await self._post("/search", json=body)
         return SearchResponse.model_validate(resp.json())
 
-    async def search_fulltext(
-        self,
-        query: str,
-        *,
-        limit: int = 20,
-        offset: int = 0,
-        artifact_types: list[str] | None = None,
-        metadata_filters: dict | None = None,
-        scope_artifact_id: UUID | str | None = None,
-    ) -> SearchResponse:
-        """Fulltext search convenience method (uses unified search)."""
-        return await self.search(
-            query=query,
-            limit=limit,
-            offset=offset,
-            artifact_types=artifact_types,
-            metadata_filters=metadata_filters,
-            scope_artifact_id=scope_artifact_id,
-        )
+    async def search_fulltext(self, query: str, **kwargs) -> SearchResponse:
+        """Fulltext search convenience method."""
+        return await self.search(query=query, **kwargs)
 
     async def search_semantic(
-        self,
-        query_vector: list[float],
-        embedding_type: str,
-        *,
-        limit: int = 20,
-        offset: int = 0,
-        similarity_threshold: float | None = None,
-        artifact_types: list[str] | None = None,
-        metadata_filters: dict | None = None,
-        scope_artifact_id: UUID | str | None = None,
-        graph_scope: GraphScope | dict | None = None,
+        self, query_vector: list[float], embedding_type: str, **kwargs
     ) -> SearchResponse:
-        """Semantic (vector) search convenience method.
-
-        Requires a pre-computed query vector. For automatic embedding
-        generation from text, use ``mimir-semantic`` instead.
-        """
+        """Semantic (vector) search convenience method."""
         return await self.search(
-            query_vector=query_vector,
-            embedding_type=embedding_type,
-            limit=limit,
-            offset=offset,
-            similarity_threshold=similarity_threshold,
-            artifact_types=artifact_types,
-            metadata_filters=metadata_filters,
-            scope_artifact_id=scope_artifact_id,
-            graph_scope=graph_scope,
+            query_vector=query_vector, embedding_type=embedding_type, **kwargs
         )
 
     async def search_hybrid(
-        self,
-        query: str,
-        query_vector: list[float],
-        embedding_type: str,
-        *,
-        limit: int = 20,
-        offset: int = 0,
-        semantic_weight: float | None = None,
-        similarity_threshold: float | None = None,
-        artifact_types: list[str] | None = None,
-        metadata_filters: dict | None = None,
-        scope_artifact_id: UUID | str | None = None,
-        graph_scope: GraphScope | dict | None = None,
+        self, query: str, query_vector: list[float], embedding_type: str, **kwargs
     ) -> SearchResponse:
-        """Hybrid (fulltext + vector) search convenience method.
-
-        Combines keyword matching with vector similarity. Requires a
-        pre-computed query vector. For automatic embedding generation
-        from text, use ``mimir-semantic`` instead.
-        """
+        """Hybrid (fulltext + vector) search convenience method."""
         return await self.search(
             query=query,
             query_vector=query_vector,
             embedding_type=embedding_type,
-            limit=limit,
-            offset=offset,
-            semantic_weight=semantic_weight,
-            similarity_threshold=similarity_threshold,
-            artifact_types=artifact_types,
-            metadata_filters=metadata_filters,
-            scope_artifact_id=scope_artifact_id,
-            graph_scope=graph_scope,
+            **kwargs,
         )
 
     async def search_similar(
-        self,
-        artifact_id: UUID | str,
-        embedding_type: str,
-        *,
-        limit: int = 20,
-        similarity_threshold: float | None = None,
-        artifact_types: list[str] | None = None,
+        self, artifact_id: UUID | str, embedding_type: str, **kwargs
     ) -> SearchResponse:
-        """Find artifacts similar to a given artifact.
-
-        Uses the existing embedding of the specified artifact
-        to find similar items.
-        """
+        """Find artifacts similar to a given artifact."""
         return await self.search(
-            similar_to=artifact_id,
-            embedding_type=embedding_type,
-            limit=limit,
-            similarity_threshold=similarity_threshold,
-            artifact_types=artifact_types,
+            similar_to=artifact_id, embedding_type=embedding_type, **kwargs
         )
 
     # ── Context / RAG Assembly ─────────────────────────────────────────
@@ -768,18 +777,7 @@ class MimirClient:
         embedding_type: str | None = None,
         preferences: dict | None = None,
     ) -> ContextResponse:
-        """Retrieve assembled RAG context for an artifact.
-
-        Args:
-            artifact_id: The root artifact UUID.
-            policy: Context policy — ``'direct_relations'``, ``'derived_lineage'``,
-                ``'evidence_chain'``, or ``'full_graph'``.
-            max_depth: Maximum traversal depth.
-            max_tokens: Token budget for context assembly.
-            include_embeddings: Whether to include embedding vectors.
-            embedding_type: Required if ``include_embeddings`` is True.
-            preferences: Additional context preferences dict.
-        """
+        """Retrieve assembled RAG context for an artifact."""
         body: dict = {"policy": policy}
         if max_depth is not None:
             body["max_depth"] = max_depth
@@ -797,11 +795,7 @@ class MimirClient:
     # ── Provenance ─────────────────────────────────────────────────────
 
     async def list_provenance_by_artifact(
-        self,
-        artifact_id: UUID | str,
-        *,
-        limit: int = 50,
-        offset: int = 0,
+        self, artifact_id: UUID | str, *, limit: int = 50, offset: int = 0
     ) -> ProvenanceList:
         """List provenance events for an artifact."""
         params: dict = {"limit": limit, "offset": offset}
@@ -817,15 +811,7 @@ class MimirClient:
         limit: int = 50,
         offset: int = 0,
     ) -> ProvenanceList:
-        """List provenance events with optional filters.
-
-        Args:
-            entity_type: Filter by entity type (artifact, relation, embedding).
-            entity_id: Filter by entity UUID.
-            actor_type: Filter by actor type (user, system, llm, api_client, migration).
-            limit: Maximum results.
-            offset: Pagination offset.
-        """
+        """List provenance events with optional filters."""
         params: dict = {"limit": limit, "offset": offset}
         if entity_type is not None:
             params["entity_type"] = entity_type
@@ -839,7 +825,7 @@ class MimirClient:
     # ── Health ─────────────────────────────────────────────────────────
 
     async def health(self) -> HealthResponse:
-        """Check API health. Returns the health response."""
+        """Check API health."""
         resp = await self._get("/health")
         return HealthResponse.model_validate(resp.json())
 

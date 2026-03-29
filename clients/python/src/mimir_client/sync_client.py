@@ -1,10 +1,10 @@
-"""MimirSyncClient — synchronous HTTP client for the Mímir Knowledge Graph API (v5).
+"""MimirSyncClient -- synchronous HTTP client for the Mimir Knowledge Graph API (v5).
 
 Drop-in synchronous alternative to ``MimirClient``. Uses ``httpx.Client`` (sync)
 internally, so no event loop threading or async bridges are needed.
 
 Usage:
-    with MimirSyncClient(api_url="http://localhost:38000", tenant_id=1) as client:
+    with MimirSyncClient(api_url="http://localhost:38000", tenant="rademo1") as client:
         tenant = client.get_tenant(1)
         artifacts = client.list_artifacts(artifact_type="document")
 
@@ -16,17 +16,20 @@ Or with settings from environment:
 
 from __future__ import annotations
 
+import threading
+import warnings
 from uuid import UUID
 
 import httpx
 
 from mimir_client.config import MimirClientSettings
 from mimir_client.exceptions import (
+    MimirConflictError,
     MimirConnectionError,
     MimirError,
     MimirNotFoundError,
-    MimirConflictError,
     MimirServerError,
+    MimirTenantError,
     MimirValidationError,
 )
 from mimir_client.models import (
@@ -53,30 +56,59 @@ from mimir_client.models import (
 
 
 class MimirSyncClient:
-    """Synchronous HTTP client for the Mímir Knowledge Graph API.
+    """Synchronous HTTP client for the Mimir Knowledge Graph API.
 
     Provides the same API surface as :class:`MimirClient` but with blocking
-    calls. Uses ``httpx.Client`` internally — no event loop required.
+    calls. Uses ``httpx.Client`` internally -- no event loop required.
 
     Args:
-        api_url: Base URL of the Mímir API (e.g. ``http://localhost:38000``).
-        tenant_id: Default tenant ID injected as ``X-Tenant-ID`` header.
-            Can be ``None`` for tenant management calls only.
+        api_url: Base URL of the Mimir API (e.g. ``http://localhost:38000``).
+        tenant: Tenant shortname (e.g. ``"rademo1"``). Resolved lazily to
+            the integer ID required by the backend on first tenant-scoped
+            request.
         timeout: Request timeout in seconds.
+        tenant_id: **Deprecated.** Integer tenant ID. Will be removed in
+            v6.0.0. Use ``tenant`` (shortname string) instead.
     """
 
     def __init__(
         self,
         api_url: str = "http://localhost:38000",
-        tenant_id: int | None = None,
+        tenant: str | None = None,
         timeout: float = 30.0,
+        *,
+        tenant_id: int | None = None,
     ):
+        if tenant is not None and tenant_id is not None:
+            raise ValueError(
+                "Cannot provide both 'tenant' and 'tenant_id'. "
+                "Use 'tenant' (shortname string). "
+                "'tenant_id' is deprecated and will be removed in v6.0.0."
+            )
+
         self._api_url = api_url.rstrip("/")
-        self._tenant_id = tenant_id
         self._timeout = timeout
-        headers = {}
+        self._resolve_lock = threading.Lock()
+
+        headers: dict[str, str] = {}
+
         if tenant_id is not None:
+            warnings.warn(
+                "tenant_id parameter is deprecated and will be removed in v6.0.0. "
+                "Use tenant (shortname string) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            self._tenant: str | None = None
+            self._resolved_tenant_id: int | None = tenant_id
             headers["X-Tenant-ID"] = str(tenant_id)
+        elif tenant is not None:
+            self._tenant = tenant
+            self._resolved_tenant_id = None
+        else:
+            self._tenant = None
+            self._resolved_tenant_id = None
+
         self._client = httpx.Client(
             base_url=self._api_url,
             headers=headers,
@@ -88,17 +120,44 @@ class MimirSyncClient:
         """Create a client from a ``MimirClientSettings`` instance."""
         return cls(
             api_url=settings.api_url,
-            tenant_id=settings.tenant_id,
+            tenant=settings.tenant,
             timeout=settings.timeout,
+            tenant_id=settings.tenant_id,
         )
+
+    # ── Properties ─────────────────────────────────────────────────────
+
+    @property
+    def tenant(self) -> str | None:
+        """The tenant shortname, or ``None`` if not set."""
+        return self._tenant
+
+    @tenant.setter
+    def tenant(self, value: str | None):
+        self._tenant = value
+        self._resolved_tenant_id = None
+        self._client.headers.pop("X-Tenant-ID", None)
 
     @property
     def tenant_id(self) -> int | None:
-        return self._tenant_id
+        """The resolved integer tenant ID, or ``None`` if not yet resolved.
+
+        .. deprecated:: 5.3.0
+            Use :attr:`tenant` (shortname string) instead.
+            Will be removed in v6.0.0.
+        """
+        return self._resolved_tenant_id
 
     @tenant_id.setter
     def tenant_id(self, value: int | None):
-        self._tenant_id = value
+        warnings.warn(
+            "tenant_id is deprecated and will be removed in v6.0.0. "
+            "Use tenant (shortname string) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._tenant = None
+        self._resolved_tenant_id = value
         if value is not None:
             self._client.headers["X-Tenant-ID"] = str(value)
         else:
@@ -114,10 +173,63 @@ class MimirSyncClient:
     def __exit__(self, *args):
         self.close()
 
+    # ── Lazy resolution ────────────────────────────────────────────────
+
+    def _resolve_shortname(self, shortname: str) -> Tenant:
+        """Resolve a tenant shortname to a Tenant via the backend API.
+
+        Calls ``GET /tenants/by-shortname/{shortname}`` directly on the
+        httpx client to avoid recursion through ``_request()``.
+        """
+        try:
+            response = self._client.request(
+                "GET", f"/tenants/by-shortname/{shortname}"
+            )
+        except httpx.ConnectError as exc:
+            raise MimirConnectionError(
+                f"Cannot connect to {self._api_url}"
+            ) from exc
+        except httpx.TimeoutException as exc:
+            raise MimirConnectionError(
+                f"Request timed out resolving tenant '{shortname}'"
+            ) from exc
+
+        if response.status_code == 404:
+            raise MimirTenantError(
+                f"Tenant shortname '{shortname}' not found. "
+                "Create the tenant first or check the shortname."
+            )
+        if response.status_code >= 400:
+            try:
+                body = response.json()
+                detail = body.get("detail", response.text)
+            except Exception:
+                detail = response.text
+            raise MimirError(f"HTTP {response.status_code}: {detail}")
+
+        return Tenant.model_validate(response.json())
+
+    def _ensure_resolved(self):
+        """Ensure the tenant shortname has been resolved to an integer ID.
+
+        Uses double-checked locking: after the first successful resolution,
+        subsequent calls are a simple ``None`` comparison with no lock
+        overhead.
+        """
+        if self._tenant is not None and self._resolved_tenant_id is None:
+            with self._resolve_lock:
+                if self._resolved_tenant_id is not None:
+                    return  # Another thread resolved while we waited
+                tenant = self._resolve_shortname(self._tenant)
+                self._resolved_tenant_id = tenant.id
+                self._client.headers["X-Tenant-ID"] = str(tenant.id)
+
     # ── Internal request handling ──────────────────────────────────────
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         """Execute an HTTP request with error mapping."""
+        self._ensure_resolved()
+
         try:
             response = self._client.request(method, path, **kwargs)
         except httpx.ConnectError as exc:
@@ -214,17 +326,16 @@ class MimirSyncClient:
     ) -> Tenant:
         """Ensure a tenant exists. Returns existing or creates new.
 
-        Updates the client's ``tenant_id`` to match.
+        Sets the client's tenant context (both shortname and resolved
+        integer ID) to the resolved or created tenant.
         """
         try:
             tenant = self.get_tenant_by_shortname(shortname)
-            self.tenant_id = tenant.id
-            return tenant
         except MimirNotFoundError:
-            pass
-
-        tenant = self.create_tenant(shortname, name)
-        self.tenant_id = tenant.id
+            tenant = self.create_tenant(shortname, name)
+        self._tenant = shortname
+        self._resolved_tenant_id = tenant.id
+        self._client.headers["X-Tenant-ID"] = str(tenant.id)
         return tenant
 
     # ── Artifact Types ─────────────────────────────────────────────────
@@ -772,7 +883,7 @@ class MimirSyncClient:
 
         Args:
             artifact_id: The root artifact UUID.
-            policy: Context policy — ``'direct_relations'``, ``'derived_lineage'``,
+            policy: Context policy -- ``'direct_relations'``, ``'derived_lineage'``,
                 ``'evidence_chain'``, or ``'full_graph'``.
             max_depth: Maximum traversal depth.
             max_tokens: Token budget for context assembly.
