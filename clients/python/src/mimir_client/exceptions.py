@@ -38,10 +38,12 @@ class MimirServerError(MimirError):
 
 
 class MimirTenantError(MimirError):
-    """Raised when a tenant-scoped operation is called without tenant_id."""
+    """Raised when tenant context is missing or cannot be resolved."""
 
-    def __init__(self):
+    def __init__(self, message: str | None = None):
         super().__init__(
-            "tenant_id is required for this operation. "
-            "Set it via MimirClient(tenant_id=...) or MIMIR_TENANT_ID env var."
+            message or (
+                "No tenant set. Provide tenant (shortname) at construction "
+                "or call ensure_tenant() before making tenant-scoped requests."
+            )
         )

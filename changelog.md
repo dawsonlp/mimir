@@ -5,103 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.2.0] - 2026-02-22
+## [Unreleased] — mimir-client v5.3.0
 
-### Fixed
-- `mimir-client`: **Complete model audit against server schemas** — comprehensive rewrite of all Pydantic response models to match actual backend schemas field-by-field
-  - **Tenant**: removed `updated_at` (server never returns it); `description`, `metadata`, `tenant_type`, `is_active` made optional with defaults
-  - **Artifact**: removed `updated_at` and `artifact_type_id` (server returns `artifact_type` string, not integer ID); added `start_offset`, `end_offset`, `position_metadata`, `content_hash` fields; all content/source fields properly optional
-  - **ArtifactType**: replaced integer `id` with `code` (text) as primary key; added `category`, `sort_order` fields; `description` made optional
-  - **RelationType**: replaced integer `id` with `code` (text) as primary key; added `inverse_code`, `is_symmetric`, `sort_order` fields
-  - **Relation**: removed `relation_type_id` (server returns `relation_type` string); `confidence` and `metadata` made optional
-  - **EmbeddingType**: replaced integer `id` with `code` (text) as primary key; added `distance_metric`, `max_tokens`, `vector_table_name`, `sort_order` fields
-  - **Embedding**: removed `embedding_type_id` (server returns `embedding_type` string); `metadata` made optional
-  - **ContextResponse**: completely rewritten to match backend schema — replaced flat `ContextRelation` with structured `ContextArtifact`, `RelationPathItem`, `ContextHintsApplied`, `ContextMetadata` models
-  - **SearchResponse**: added `query` and `strategy` fields; `SearchResult.rank` made optional
-  - **ProvenanceEvent**: removed `source_system`/`source_id`; replaced with `entity_type`, `entity_id`, `action`, `actor_type`, `actor_id`, `reason` matching V2 append-only schema
-  - All models now use `model_config = {"extra": "allow"}` for forward compatibility with future server fields
+### Changed (mimir-client)
+- **Tenant shortname as primary identifier.** Constructor accepts `tenant: str`
+  (domain shortname) as the primary tenant parameter. The client lazily resolves
+  the shortname to the backend integer ID via
+  `GET /tenants/by-shortname/{shortname}`. No manual ID lookup needed.
+- **`MimirClientSettings`** adds `tenant: str` field (env: `MIMIR_TENANT`).
+- **`MimirTenantError`** now accepts an optional message parameter and is
+  exported from `mimir_client`.
+- **`ensure_tenant()`** now sets both `_tenant` (shortname) and resolved integer
+  ID internally.
 
-### Changed
-- `mimir-client`: `create_embedding_type()` parameters updated to match server schema (`distance_metric`, `max_tokens`, `description` instead of `model_name`, `is_active`)
-- `mimir-client`: `list_provenance_by_source()` replaced with `list_provenance()` supporting server's filter parameters (`entity_type`, `entity_id`, `actor_type`)
-- `mimir-client`: `ContextRelation` removed from exports; replaced by `ContextArtifact`, `ContextHintsApplied`, `ContextMetadata`, `RelationPathItem`
-- `mimir-client`: test fixtures updated to match actual server response shapes (no `updated_at`, no integer IDs for type entities, correct field names)
-- `mimir-client` version bumped to 5.2.0
+### Deprecated (mimir-client)
+- `tenant_id: int` constructor parameter — use `tenant: str` instead. Emits
+  `DeprecationWarning`. Will be removed in v6.0.0.
+- `MIMIR_TENANT_ID` environment variable — use `MIMIR_TENANT` instead. Emits
+  `DeprecationWarning`. Will be removed in v6.0.0.
+- `tenant_id` property setter — use `tenant` property instead. Emits
+  `DeprecationWarning`. Will be removed in v6.0.0.
 
-## [5.1.0] - 2026-02-22
+### Added (mimir-client)
+- `tenant` read/write property on both `MimirSyncClient` and `MimirClient`.
+- Thread-safe lazy resolution with `threading.Lock` (sync) / `asyncio.Lock`
+  (async).
+- Mutual exclusion: providing both `tenant` and `tenant_id` raises `ValueError`.
+- Multi-tenant agent pattern documented (one client instance per tenant).
 
-### Added
-- `mimir-client`: `MimirSyncClient` — synchronous HTTP client with identical API surface to the async `MimirClient`
-  - Uses `httpx.Client` (blocking) internally — no event loop threading or async bridges needed
-  - Full `__enter__`/`__exit__` context manager support
-  - `from_settings()` classmethod for environment-based configuration
-  - All methods from `MimirClient` available as synchronous equivalents
-  - Eliminates need for hand-rolled async-to-sync bridges in CLI tools, scripts, and sync frameworks
-- `mimir-client`: `MimirSyncClient` exported from package top-level (`from mimir_client import MimirSyncClient`)
-- `mimir-client`: unit tests for `MimirSyncClient` (construction, error mapping, CRUD, search, health, context manager, header injection)
+## [5.2.0] - 2026-03-04
 
-### Changed
-- `mimir-client` README updated with sync-first Quick Start and dual sync/async examples throughout
-- `mimir-client` version bumped to 5.1.0
-
-## [5.0.5] - 2026-02-21
-
-### Fixed
-- `mimir-client`: `Tenant.updated_at` and `Artifact.updated_at` made optional — server does not return `updated_at` field, causing Pydantic validation errors on every API call
-- CI: set `POSTGRES_PASSWORD` in test conftest for unit test collection (Settings validates at import time)
-
-### Changed
-- CI: removed mypy from gate (42 pre-existing false positives with FastAPI/Pydantic; runtime validation sufficient)
-- CI: integration tests disabled (require full stack: AGE, pgvector, migrations, running API)
-- CI pipeline streamlined: lint → format → unit tests → Docker build (~1m total)
-
-## [5.0.4] - 2026-02-21
-
-### Added
-- `mimir-client`: `search_semantic()` convenience method — vector search with pre-computed embeddings
-- `mimir-client`: `search_hybrid()` convenience method — combined fulltext + vector search
-- `mimir-client`: `search_similar()` convenience method — find similar artifacts by existing embedding
-- All new methods delegate to the unified `search()` with typed parameters and clear docstrings
-
-## [5.0.3] - 2026-02-21
-
-### Fixed
-- Ruff lint/format across all test files (imports, formatting, trailing newlines)
-- `TemporalHint` import in `context_service.py` (was referencing removed class)
-
-### Changed
-- Ruff config: suppress UP042 (str+Enum → StrEnum may affect Pydantic serialization)
-- Ruff config: suppress B017 (pytest.raises(Exception) acceptable in validation tests)
-
-## [5.0.2] - 2026-02-21
-
-### Added
-- `mimir-client` async HTTP client implementation (PyPI: `pip install mimir-client`)
-  - Full typed Pydantic response models for all API resources
-  - `MimirClient` with async context manager, automatic tenant header injection
-  - Convenience methods: `ensure_tenant()`, `ensure_artifact_type()`, `ensure_relation_type()`, `ensure_embedding_type()`
-  - `search()` unified search + `search_fulltext()` convenience method
-  - Structured error handling: `MimirNotFoundError`, `MimirConflictError`, `MimirValidationError`, `MimirServerError`
-  - `MimirClientSettings` with environment variable support (`MIMIR_API_URL`, `MIMIR_TENANT_ID`)
-
-## [5.0.1] - 2026-02-21
-
-### Fixed
-- AGE Cypher triggers: replaced `quote_literal()` with `cypher_literal()` in all PL/pgSQL trigger functions that build Cypher queries inside `$cypher$` blocks. `quote_literal()` emits PostgreSQL `E'…'` syntax which the Cypher parser rejects, causing 500 errors on artifact titles containing apostrophes (e.g., "What's Next").
-  - `trg_artifact_create_vertex()`
-  - `trg_artifact_delete_vertex()`
-  - `trg_relation_create_edge()`
-  - `trg_relation_delete_edge()`
-  - `rebuild_tenant_graph()`
-- Docker Compose image tags updated from v4.0.5 to v5.0.1
-
-### Added
-- `cypher_literal()` PL/pgSQL helper function: escapes backslashes and single quotes, wraps in plain single quotes for valid Cypher string literals
-- Integration tests for artifact titles containing apostrophes, backslashes, and mixed special characters
-- `mimir-client` Python package published to PyPI (`pip install mimir-client`)
-
-### Changed
-- CI release pipeline: `publish-client` job uses `uv build` + `uv publish` instead of `pip install build` + `pypa/gh-action-pypi-publish`
+### Added (mimir-client)
+- **Python client library** published to PyPI as `mimir-client`.
+- `MimirSyncClient` — synchronous HTTP client using `httpx.Client`.
+- `MimirClient` — async HTTP client using `httpx.AsyncClient`.
+- Full API coverage: tenants, artifacts, relations, embeddings, search, context,
+  provenance, health.
+- `MimirClientSettings` with pydantic-settings for environment-based configuration.
+- Typed Pydantic response models for all API responses.
+- Exception hierarchy: `MimirError`, `MimirConnectionError`, `MimirNotFoundError`,
+  `MimirConflictError`, `MimirValidationError`, `MimirServerError`,
+  `MimirTenantError`.
+- `ensure_*` convenience methods for idempotent resource creation.
+- Context manager support (`with` / `async with`) for clean HTTP cleanup.
 
 ## [5.0.0] - 2026-02-20
 
@@ -238,13 +184,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hybrid search with RRF fusion
 - Context assembly endpoint
 
-[5.2.0]: https://github.com/dawsonlp/mimir/compare/v5.1.0...v5.2.0
-[5.1.0]: https://github.com/dawsonlp/mimir/compare/v5.0.5...v5.1.0
-[5.0.5]: https://github.com/dawsonlp/mimir/compare/v5.0.4...v5.0.5
-[5.0.4]: https://github.com/dawsonlp/mimir/compare/v5.0.3...v5.0.4
-[5.0.3]: https://github.com/dawsonlp/mimir/compare/v5.0.2...v5.0.3
-[5.0.2]: https://github.com/dawsonlp/mimir/compare/v5.0.1...v5.0.2
-[5.0.1]: https://github.com/dawsonlp/mimir/compare/v5.0.0...v5.0.1
 [5.0.0]: https://github.com/dawsonlp/mimir/compare/v4.0.0...v5.0.0
 [4.0.0]: https://github.com/dawsonlp/mimir/compare/v3.0.0...v4.0.0
 [3.0.0]: https://github.com/dawsonlp/mimir/compare/v2.0.0...v3.0.0
