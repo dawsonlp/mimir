@@ -86,6 +86,20 @@ This directory is excluded from version control.
 
 ---
 
+## Design Principles
+
+Three principles govern all architectural decisions in Mimir:
+
+| Principle | Meaning | Test |
+|-----------|---------|------|
+| **Mechanism, not policy** | Libraries provide capabilities; applications decide how to use them | "Does this component prescribe a workflow, or enable one?" |
+| **KISS** | The smallest design that solves the real problem today | "Could a junior developer understand this?" |
+| **DRY** | One place for every concept; don't re-wrap what already exists | "Am I duplicating something the backend or client already does?" |
+
+The Mimir backend and `mimir-client` are mechanisms. Applications (chat servers, RAG pipelines, ingestion scripts) implement policy by composing these mechanisms. See [Roadmap](docs/roadmap.md) for how these principles shape project direction.
+
+---
+
 ## Documentation
 
 Project-wide documentation is in the `docs/` directory:

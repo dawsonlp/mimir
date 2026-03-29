@@ -729,8 +729,8 @@ The graph search design is successful when:
 |----------|-------------|
 | `search-architecture.md` | Defines current search behavior; this document extends it with graph search |
 | `unified-search-technical-design.md` | Technical design for v3.0.0 search; graph search technical design will extend it |
-| `enhancement-request-evaluation.md` | Source of graph search requirements analyzed here |
-| `enhancement-roadmap-checklist.md` | Tracks implementation progress; graph search phases should be added |
+| `archive/enhancement-request-evaluation.md` | Source of graph search requirements analyzed here (archived) |
+| `archive/enhancement-roadmap-checklist.md` | Implementation progress tracking (archived — see [roadmap.md](roadmap.md)) |
 | `data-model.md` | Documents relation table schema referenced in §2.2 |
 
 ## Appendix C: Decision Log

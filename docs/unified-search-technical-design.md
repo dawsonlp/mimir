@@ -5,7 +5,7 @@
 **Phase**: 3 (Search Unification)  
 **Status**: ✅ Implemented (v3.0.0)  
 **Prerequisites**: Phase 1 (Search Infrastructure) ✅, Phase 2 (Deletion Infrastructure) ✅  
-**Source**: [Enhancement Request Evaluation §2](enhancement-request-evaluation.md#2-unified-search-endpoint), [Enhancement Roadmap Item #8](enhancement-roadmap-checklist.md)
+**Source**: [Enhancement Request Evaluation §2](archive/enhancement-request-evaluation.md#2-unified-search-endpoint), [Enhancement Roadmap Item #8](archive/enhancement-roadmap-checklist.md)
 
 ---
 
@@ -339,7 +339,7 @@ Every error from the unified endpoint explains **what was inferred and why**:
 | `backend/src/mimir/services/search_service.py` | No change | Unified endpoint delegates to existing service functions |
 | `backend/tests/unit/test_unified_search.py` | New | Strategy inference unit tests, schema validation tests |
 | `backend/tests/integration/test_unified_search.py` | New | End-to-end tests: each strategy, error cases, filter combinations, deprecation headers |
-| `docs/enhancement-roadmap-checklist.md` | Modified | Check off Phase 3 items as completed |
+| `docs/archive/enhancement-roadmap-checklist.md` | Modified | Check off Phase 3 items as completed (archived) |
 
 ---
 
@@ -454,7 +454,7 @@ Tests against a running Mimir instance with test data:
 - [x] Test response includes `strategy` field (+ standard response shape, legacy endpoint has null strategy)
 
 ### Documentation
-- [x] Update `docs/enhancement-roadmap-checklist.md` with implementation status
+- [x] Update `docs/archive/enhancement-roadmap-checklist.md` with implementation status (archived)
 - [x] Update OpenAPI description in `main.py` TAGS_METADATA for search tag
 - [x] Bump API version to 3.0.0 (breaking change — legacy endpoints removed)
 - [x] Publish consumer migration guide — `comms/06_v3_migration_guide.md`

@@ -382,7 +382,7 @@ Legacy endpoints `POST /search/semantic`, `POST /search/hybrid`, and `GET /searc
 ## Related Documentation
 
 - [Unified Search Technical Design](unified-search-technical-design.md) — Implementation details and design decisions
-- [Enhancement Roadmap](enhancement-roadmap-checklist.md) — Phase tracking for search enhancements
+- [Enhancement Roadmap](archive/enhancement-roadmap-checklist.md) — Phase tracking for search enhancements (archived — see [roadmap.md](roadmap.md))
 - [Soft-Delete Semantics](soft-delete-semantics.md) — How deletion interacts with search
 - [Migration Guide](../comms/06_v3_migration_guide.md) — Consumer migration from legacy endpoints
 
