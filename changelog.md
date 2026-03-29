@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — mimir-client v5.3.0
+
+### Changed (mimir-client)
+- **Tenant shortname as primary identifier.** Constructor accepts `tenant: str`
+  (domain shortname) as the primary tenant parameter. The client lazily resolves
+  the shortname to the backend integer ID via
+  `GET /tenants/by-shortname/{shortname}`. No manual ID lookup needed.
+- **`MimirClientSettings`** adds `tenant: str` field (env: `MIMIR_TENANT`).
+- **`MimirTenantError`** now accepts an optional message parameter and is
+  exported from `mimir_client`.
+- **`ensure_tenant()`** now sets both `_tenant` (shortname) and resolved integer
+  ID internally.
+
+### Deprecated (mimir-client)
+- `tenant_id: int` constructor parameter — use `tenant: str` instead. Emits
+  `DeprecationWarning`. Will be removed in v6.0.0.
+- `MIMIR_TENANT_ID` environment variable — use `MIMIR_TENANT` instead. Emits
+  `DeprecationWarning`. Will be removed in v6.0.0.
+- `tenant_id` property setter — use `tenant` property instead. Emits
+  `DeprecationWarning`. Will be removed in v6.0.0.
+
+### Added (mimir-client)
+- `tenant` read/write property on both `MimirSyncClient` and `MimirClient`.
+- Thread-safe lazy resolution with `threading.Lock` (sync) / `asyncio.Lock`
+  (async).
+- Mutual exclusion: providing both `tenant` and `tenant_id` raises `ValueError`.
+- Multi-tenant agent pattern documented (one client instance per tenant).
+
+## [5.2.0] - 2026-03-04
+
+### Added (mimir-client)
+- **Python client library** published to PyPI as `mimir-client`.
+- `MimirSyncClient` — synchronous HTTP client using `httpx.Client`.
+- `MimirClient` — async HTTP client using `httpx.AsyncClient`.
+- Full API coverage: tenants, artifacts, relations, embeddings, search, context,
+  provenance, health.
+- `MimirClientSettings` with pydantic-settings for environment-based configuration.
+- Typed Pydantic response models for all API responses.
+- Exception hierarchy: `MimirError`, `MimirConnectionError`, `MimirNotFoundError`,
+  `MimirConflictError`, `MimirValidationError`, `MimirServerError`,
+  `MimirTenantError`.
+- `ensure_*` convenience methods for idempotent resource creation.
+- Context manager support (`with` / `async with`) for clean HTTP cleanup.
+
 ## [5.0.0] - 2026-02-20
 
 ### Breaking Changes

@@ -1,6 +1,6 @@
 # Mimir — Project Roadmap
 
-**Last Updated**: 2026-03-04
+**Last Updated**: 2026-03-29
 **Current Version**: v5.2.0
 
 ---
@@ -115,6 +115,43 @@ These are **application-level policy**, not library-level mechanism:
 - **Ingestion workflows** (chunk, store, relate, embed): How to decompose content into artifacts is domain-specific. A chat application chunks by turns. A documentation system chunks by sections. A code analysis tool chunks by functions. There is no generic "right answer" — this is policy.
 
 If multiple applications converge on shared patterns, extract those patterns into utilities at that point. Not before.
+
+---
+
+## Priority 5 — Client Library v5.3.0 (CLI-01: Tenant Shortname Migration)
+
+**Problem**: `mimir-client` v5.2.0 exposes `tenant_id: int` as the primary tenant identifier, but the Mimir domain identifies tenants by string shortname. This forces consumers to resolve shortnames to integers before constructing the client -- a leaked abstraction that creates friction for new customers and downstream frameworks (e.g., ooda_framework MemoryProtocol).
+
+**Scope**:
+- Replace `tenant_id: int` with `tenant: str` (shortname) as primary constructor parameter
+- Lazy resolution of shortname to integer via existing `GET /tenants/by-shortname/{shortname}` endpoint
+- Deprecate `tenant_id: int` and `MIMIR_TENANT_ID` env var (removal in v6.0.0)
+- Both sync (`MimirSyncClient`) and async (`MimirClient`) clients
+
+**Principle**: Mechanism -- the client translates the domain identifier to the infrastructure identifier. No policy about how tenants are organized.
+
+**Multi-tenant agents**: The recommended pattern for agents operating across multiple tenants (e.g., organization knowledge graph + practices knowledge graph + project knowledge graph) is one client instance per tenant. This is explicit, stateless per-client, and avoids mutable tenant state.
+
+**Design documents**: `clients/python/docs/cli-01-design.md`, `clients/python/docs/cli-01-technical-design.md`
+
+**Dependencies**: None.
+
+---
+
+## v6.0.0 Horizon — Multi-Tenant Agent Experience
+
+Based on feedback from the RADEMO1 customer engagement, their agent systems will operate across multiple Mimir tenants simultaneously. The v5.3.0 one-client-per-tenant pattern handles this correctly. v6.0.0 will evaluate whether deeper multi-tenant support is warranted based on production usage patterns.
+
+**Candidate items (not committed, pending customer feedback):**
+
+| Item | Description | Trigger |
+|------|-------------|---------|
+| **Shared connection pool** | Multiple client instances sharing one httpx connection pool for the same backend | Many-tenant deployments (10+) where TCP overhead matters |
+| **Cross-tenant context assembly** | Native support for graph traversal across tenant boundaries | Agent systems that need to synthesize knowledge from multiple knowledge graphs in a single context window |
+| **Per-call tenant override** | Shortname-based tenant parameter on individual data methods | Scripts or agents that rapidly traverse many tenants with a single client instance |
+| **`tenant_id` removal** | Remove deprecated `tenant_id: int` constructor parameter and `MIMIR_TENANT_ID` env var | v6.0.0 breaking change, completing the migration started in v5.3.0 |
+
+These items will be evaluated after RADEMO1 deploys multi-tenant agents in production. The architecture from v5.3.0 does not prevent any of these additions.
 
 ---
 
