@@ -539,6 +539,34 @@ All search endpoints return the same response structure:
 
 ---
 
+## Change Events
+
+Mimir creates retained change events for committed artifact, relation, and
+embedding creates. These events are published to Kafka by the separate
+`mimir.outbox_publisher` process.
+
+| Surface | Status |
+|---------|--------|
+| Kafka topic | `mimir.changes.v1` |
+| Event source | `mimirdata.change_outbox` |
+| Public REST change-feed endpoint | Not available in v5.5 |
+| Public REST backfill endpoint | Deferred |
+
+Change events are not webhooks and are not returned from provenance endpoints.
+They are intended for external projections and read models.
+
+Consumers should:
+
+- deduplicate by `event_id`;
+- use `sequence` as a replay/resume cursor;
+- treat Kafka as live delivery, not the durable replay source;
+- configure Kafka offset behavior explicitly for replay semantics.
+
+See [change-events.md](change-events.md) for the event contract and publisher
+operation guide.
+
+---
+
 ## Common Response Patterns
 
 ### Pagination

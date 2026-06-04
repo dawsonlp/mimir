@@ -6,6 +6,9 @@ Mímir is a **durable memory system** for storing and retrieving knowledge with 
 
 V2 introduces immutable artifacts with client-generated UUIDs and append-only semantics.
 
+V5.5 adds a transactional change outbox so committed Mimir writes can be
+published as generic change events for external projections.
+
 ## Core Principles
 
 ### 1. Each Artifact Is Its Own Identity
@@ -89,6 +92,15 @@ All queries are scoped by tenant_id for logical data isolation without separate 
 **Admin tables (tenant, vocabulary)**: Support full CRUD.  
 **Content tables**: Append-only.
 
+### 10. Committed Writes Can Be Projected Externally
+
+Artifact, relation, and embedding creates write a retained outbox row in the
+same transaction as the domain row and provenance row. A separate publisher can
+deliver those rows to Kafka.
+
+**Rationale**: Consumers can build external read models without coupling Mimir
+API write paths directly to Kafka availability.
+
 ## Entity Model
 
 ### Core Tables (V2)
@@ -103,6 +115,7 @@ All queries are scoped by tenant_id for logical data isolation without separate 
 | relation | Connections between artifacts | Append-only |
 | embedding | Vector representations | Append-only |
 | provenance_event | Audit log | Append-only |
+| change_outbox | Retained change-event ledger | Append-only |
 
 ### Removed from V1
 
@@ -130,6 +143,25 @@ All queries are scoped by tenant_id for logical data isolation without separate 
 
 **Note**: content_hash is informational, not a unique constraint. Same content may exist in multiple artifacts (different contexts).
 
+## Change Outbox
+
+Mimir emits change events through a transactional outbox.
+
+For each committed artifact, relation, or embedding create:
+
+1. Mimir inserts the domain row.
+2. Mimir inserts the provenance row.
+3. Mimir inserts a compact outbox row.
+4. The transaction commits once.
+5. `mimir.outbox_publisher` publishes retained outbox rows to Kafka.
+
+The Kafka topic is `mimir.changes.v1`. Delivery is at least once; consumers
+deduplicate by `event_id` and use `sequence` as the replay cursor. Kafka is the
+live delivery stream. `mimirdata.change_outbox` is the retained replay ledger.
+
+See [change-events.md](change-events.md) for the user-facing event contract and
+publisher operation guide.
+
 ## Technology Stack
 
 | Layer | Technology |
@@ -140,6 +172,7 @@ All queries are scoped by tenant_id for logical data isolation without separate 
 | Migrations | Plain SQL files |
 | Containerization | Docker Compose |
 | UUIDs | UUIDv7 (Python 3.14 uuid.uuid7()) |
+| Change delivery | Transactional outbox + Kafka publisher |
 
 ## Non-Goals
 
@@ -150,6 +183,7 @@ Mímir does not:
 - Manage UI or orchestrate workflows
 - Track "current version" (client responsibility)
 - Provide archival/lifecycle management (client responsibility)
+- Treat Kafka alone as durable replay storage
 
 ## What Changed from V1
 

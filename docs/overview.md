@@ -8,6 +8,10 @@ A durable, accountable memory and meta-analysis system for human thinking, cente
 
 Mímir serves as a **storage foundation** for preserving and querying intellectual work. It provides a clean API layer over PostgreSQL with pgvector for semantic search capabilities.
 
+Mimir can also publish committed substrate changes to Kafka so external systems
+can maintain projections or read models without polling every API endpoint.
+Those change events are generic Mimir facts, not application workflow events.
+
 ## What Mímir Is NOT
 
 This is not:
@@ -56,6 +60,7 @@ Mímir is designed as a **storage backend for RAG systems** with multiple client
 | **Content versioning** | ❌ | ✅ Append-only history |
 | **Multi-tenant** | App-level | ✅ Built-in |
 | **External key provenance** | Basic | ✅ source_system + external_id |
+| **External projections** | App-specific | ✅ Change events for committed writes |
 
 ### When to Use Mímir
 
@@ -65,6 +70,7 @@ Mímir is designed as a **storage backend for RAG systems** with multiple client
 - Audit trails for compliance or accountability
 - Meta-analysis or decision support systems
 - One system for documents + decisions + provenance
+- External projections or integration read models from committed writes
 - Full control via self-hosted PostgreSQL
 
 **Choose standard RAG if you need:**
@@ -92,6 +98,7 @@ Standard RAG systems store documents. Mímir stores **knowledge with provenance*
 | API | FastAPI (Python 3.14) |
 | Data Access | Raw SQL via psycopg v3 (no ORM) |
 | Containerization | Docker Compose |
+| Change delivery | Transactional outbox + Kafka publisher |
 
 ---
 
@@ -107,6 +114,7 @@ Mímir is a **storage API only**. It deliberately does not:
 | Make semantic judgments | No truth adjudication |
 | Manage UI | Presentation is client concern |
 | Orchestrate workflows | Workflow logic belongs in clients |
+| Guarantee infinite Kafka retention | Durable replay belongs in Mimir's outbox, not Kafka alone |
 
 ---
 
@@ -120,4 +128,5 @@ Mímir is a **storage API only**. It deliberately does not:
 | [data-model.md](data-model.md) | Database tables and columns |
 | [api-design.md](api-design.md) | REST endpoint specification |
 | [search-architecture.md](search-architecture.md) | Search modes, RRF, providers |
+| [change-events.md](change-events.md) | Change event stream and publisher operations |
 | [design-decisions.md](design-decisions.md) | Architectural decisions (DD-001 through DD-009) |

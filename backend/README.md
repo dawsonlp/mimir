@@ -33,6 +33,20 @@ docker compose exec api python -m migrations.migrate up
 - Health Check: http://localhost:38000/health
 - PostgreSQL: localhost:35432
 
+### Change Event Publisher
+
+Mimir API writes create retained outbox rows for artifact, relation, and
+embedding creates. Kafka delivery is handled by a separate publisher process:
+
+```bash
+python -m mimir.outbox_publisher
+```
+
+The base backend compose file does not start Kafka or the publisher. In local
+infrastructure, larnet runs Kafka and should start the publisher as a separate
+service after Mimir migrations complete. See
+`../docs/change-events.md` for the event contract and consumer semantics.
+
 ### How Hot-Reload Works
 
 The development setup uses `docker-compose.override.yaml` (automatically combined with `docker-compose.yaml`):
@@ -78,6 +92,12 @@ Host ports are prefixed with `3` to avoid conflicts with V1 or other services:
 | `OLLAMA_BASE_URL` | No | Ollama server URL (default: `http://host.docker.internal:11434`) |
 | `DEFAULT_EMBEDDING_MODEL` | No | Default model (default: `nomic-embed-text`) |
 | `LOG_LEVEL` | No | Logging level (default: `INFO`, dev: `DEBUG`) |
+| `KAFKA_BOOTSTRAP_SERVERS` | Publisher only | Kafka bootstrap servers for `mimir.outbox_publisher` |
+| `MIMIR_CHANGE_TOPIC` | No | Change event topic (default: `mimir.changes.v1`) |
+| `OUTBOX_BATCH_SIZE` | No | Publisher batch size (default: `100`) |
+| `OUTBOX_POLL_INTERVAL_SECONDS` | No | Publisher idle poll interval (default: `1.0`) |
+| `OUTBOX_RETRY_BASE_SECONDS` | No | Base retry delay for failed publishes (default: `1`) |
+| `OUTBOX_RETRY_MAX_SECONDS` | No | Maximum retry delay for failed publishes (default: `300`) |
 
 ### Embedding Providers
 
@@ -118,6 +138,7 @@ V2 uses a **Unified Artifact Model** where all knowledge is stored as artifacts:
 - **Relation**: Knowledge graph edges between artifacts
 - **Embedding**: Vector representations for semantic search
 - **Provenance Event**: Immutable audit trail
+- **Change Outbox**: Durable replay ledger for committed creates, published to Kafka by a separate process
 
 ### Quick API Test
 
@@ -178,3 +199,4 @@ docker compose ps -a
 - `../docs/data-model.md` - Database schema
 - `../docs/architecture.md` - System architecture
 - `../docs/search-architecture.md` - Semantic search implementation
+- `../docs/change-events.md` - Change stream contract and publisher operations

@@ -201,9 +201,15 @@ client.ensure_embedding_type("nomic", provider="ollama", dimensions=768)
 This client is a **thin HTTP wrapper**. It does NOT include:
 
 - Embedding generation (use [`mimir-semantic`](../../semantic/) for Ollama/OpenAI integration)
+- Kafka change event consumption (consume `mimir.changes.v1` directly)
 - Token budgeting or RAG policies
 - Graph traversal algorithms
 - Batch operations
+
+Mimir change events are delivered through Kafka by the separate
+`mimir.outbox_publisher` process. See
+[`docs/change-events.md`](../../docs/change-events.md) for the event contract
+and consumer offset requirements.
 
 ## Requirements
 

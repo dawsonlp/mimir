@@ -29,6 +29,7 @@ FastAPI-based knowledge graph API with semantic search capabilities using Postgr
 - Semantic search with multiple embedding providers (Ollama, OpenAI)
 - Graph relationships between artifacts
 - Immutable provenance tracking
+- Change events for external projections via transactional outbox + Kafka
 
 **Quick Start:**
 ```bash
@@ -109,6 +110,7 @@ Project-wide documentation is in the `docs/` directory:
   - [API Design](docs/api-design.md) - API design principles
   - [Data Model](docs/data-model.md) - Database schema
   - [Search Architecture](docs/search-architecture.md) - Semantic search
+  - [Change Events](docs/change-events.md) - Kafka change stream and replay semantics
 
 - **Architecture**
   - [System Architecture](docs/architecture.md) - Overall system design

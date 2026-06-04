@@ -5,7 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — mimir-client v5.3.0
+## [Unreleased]
+
+## [5.5.0] - 2026-06-04
+
+### Added
+
+- **Transactional change outbox** for committed artifact, relation, and embedding
+  creates.
+- `mimirdata.change_outbox` retained replay ledger with event ids, tenant ids,
+  entity references, sequence cursor, provenance references, compact payloads,
+  and publisher state.
+- **Kafka change publisher** runnable as `python -m mimir.outbox_publisher`.
+- Kafka topic contract: `mimir.changes.v1`, keyed by tenant id.
+- Versioned event contract with `event_version = 1`.
+- Publisher retry state with `publish_attempts`, `next_attempt_at`, and
+  `last_error`.
+- User-facing change event documentation in `docs/change-events.md`.
+
+### Changed
+
+- Artifact, relation, and embedding create paths now commit domain row,
+  provenance row, and outbox row in one database transaction.
+- Backend version bumped to `5.5.0`.
+- `mimir-client` version bumped to `5.5.0` so tag-based release validation
+  remains consistent.
+
+### Operational Notes
+
+- Kafka delivery is at least once, not exactly once.
+- Consumers must deduplicate by `event_id`.
+- Consumers should use outbox `sequence` as the replay cursor.
+- Kafka is live delivery; `mimirdata.change_outbox` is Mimir's durable replay
+  ledger.
+- Kafka consumer defaults must not be accepted without analysis for replay or
+  projection rebuild use cases.
+
+## [5.3.0] - 2026-03-04 — mimir-client
 
 ### Changed (mimir-client)
 - **Tenant shortname as primary identifier.** Constructor accepts `tenant: str`
@@ -184,6 +220,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hybrid search with RRF fusion
 - Context assembly endpoint
 
+[5.5.0]: https://github.com/dawsonlp/mimir/compare/v5.4.0...v5.5.0
+[5.3.0]: https://github.com/dawsonlp/mimir/compare/v5.2.0...v5.3.0
 [5.0.0]: https://github.com/dawsonlp/mimir/compare/v4.0.0...v5.0.0
 [4.0.0]: https://github.com/dawsonlp/mimir/compare/v3.0.0...v4.0.0
 [3.0.0]: https://github.com/dawsonlp/mimir/compare/v2.0.0...v3.0.0

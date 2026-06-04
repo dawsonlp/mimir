@@ -173,6 +173,29 @@ curl -X POST http://localhost:38000/artifacts \
 
 http://localhost:38000/docs
 
+## Optional: Change Events
+
+Mimir v5.5 can publish committed artifact, relation, and embedding creates to
+Kafka through a separate publisher process. The base quickstart stack above does
+not include Kafka, so change delivery is not active in this minimal setup.
+
+If you run Mimir under larnet or another environment with Kafka, start the
+publisher after migrations complete:
+
+```bash
+python -m mimir.outbox_publisher
+```
+
+Required publisher environment:
+
+- `DATABASE_URL`
+- `POSTGRES_PASSWORD`
+- `KAFKA_BOOTSTRAP_SERVERS`
+- `MIMIR_CHANGE_TOPIC` (defaults to `mimir.changes.v1`)
+
+See [change-events.md](change-events.md) for the event contract, delivery
+semantics, and consumer offset requirements.
+
 ## Stop
 
 ```bash
