@@ -23,7 +23,10 @@ load_dotenv()
 
 app = typer.Typer(
     name="mimir-validate",
-    help="CLI tool for validating Mímir V2 API through real-world scenarios.",
+    help=(
+        "Legacy demo scaffold for Mimir validation scenarios; "
+        "pending v5.5 contract modernization."
+    ),
     no_args_is_help=True,
 )
 console = Console()

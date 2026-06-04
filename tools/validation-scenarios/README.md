@@ -1,6 +1,22 @@
 # Mímir Validation Scenarios
 
-CLI tool for validating Mímir V2 API through real-world usage scenarios.
+CLI tool for exercising Mimir through real-world usage scenarios.
+
+## Current Status
+
+This tool predates the current Mimir v5.5 API shape. It is useful as a demo
+scaffold, but it is not yet the authoritative v5 contract/conformance suite.
+
+Known modernization gaps:
+
+- It uses a local thin HTTP client instead of the published `mimir-client`.
+- It still defaults to integer `MIMIR_TENANT_ID` instead of tenant shortname.
+- Search uses the deprecated `GET /search/fulltext` path instead of unified
+  `POST /search`.
+- It does not yet validate graph-scoped search, provenance, embeddings, or
+  change outbox behavior.
+
+The roadmap priority is to convert this into a v5.5 contract validation tool.
 
 ## Installation
 
@@ -19,7 +35,7 @@ cp .env.example .env
 
 Required variables:
 - `MIMIR_BASE_URL` - Mímir API URL (default: http://localhost:38000)
-- `MIMIR_TENANT_ID` - Tenant ID (default: 1)
+- `MIMIR_TENANT_ID` - Tenant ID (legacy default: 1)
 - `LLM_MODEL` - LLM provider:model (e.g., `ollama:llama3.2` or `anthropic:claude-sonnet-4-5`)
 
 For Anthropic, set `ANTHROPIC_API_KEY`.

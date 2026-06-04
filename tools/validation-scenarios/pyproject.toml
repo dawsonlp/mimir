@@ -1,7 +1,7 @@
 [project]
 name = "mimir-validation-scenarios"
 version = "0.1.0"
-description = "CLI tool for validating Mímir V2 API through real-world scenarios"
+description = "Legacy demo scaffold for Mimir validation scenarios; pending v5.5 contract modernization"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

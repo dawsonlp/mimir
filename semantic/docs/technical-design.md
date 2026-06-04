@@ -4,13 +4,14 @@
 **Date**: 2026-03-05
 **Author**: Lead Senior Engineer
 **Implements**: `semantic/docs/design.md`
-**Depends on**: Mimir Backend API v5.2.0, `mimir-client` v5.2.0 (peer, not import dependency)
+**Depends on**: Mimir Backend API v5.5.1, `mimir-client` v5.5.1 (peer, not import dependency)
+**Status**: Implemented as `mimir-embeddings` package v0.1.0.
 
 ---
 
 ## 1. Objective
 
-Bridge the architect design (`semantic/docs/design.md`) to implementation for the Embedding Generation Library — Roadmap Priority 1. This document specifies library and framework choices, data structures, provider integration patterns, error handling, and testing strategy. The implementing engineer makes all final coding decisions within these constraints.
+Bridge the architect design (`semantic/docs/design.md`) to implementation for the Embedding Generation Library. This document specifies library and framework choices, data structures, provider integration patterns, error handling, and testing strategy. The implementing engineer makes all final coding decisions within these constraints.
 
 The library fills one gap: **given text, return a vector from an external embedding provider.** It does not prescribe ingestion, retrieval, context assembly, or chunking — those are application-level policy.
 

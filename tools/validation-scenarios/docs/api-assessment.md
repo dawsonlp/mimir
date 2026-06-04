@@ -1,8 +1,26 @@
 # API Design Assessment for RAG Use Cases
 
+## Current Status
+
+This assessment was written against the older V2 API shape. It is useful
+historical input, but it is not current for Mimir v5.5. The current validation
+roadmap should reassess the API around:
+
+- `mimir-client` tenant shortname behavior;
+- unified `POST /search`;
+- graph-scoped search;
+- graph-based context retrieval;
+- provenance APIs;
+- embedding type/vector behavior;
+- change outbox and Kafka publisher semantics.
+
 ## Executive Summary
 
-The Mímir V2 API is **well-designed for the core storage model** (artifacts, relations, embeddings) but has **gaps for efficient RAG context retrieval**. The current API requires N+1 queries to build context from related artifacts, which impacts the primary use case.
+The historical Mímir V2 API was **well-designed for the core storage model**
+(artifacts, relations, embeddings) but had **gaps for efficient RAG context
+retrieval**. Those gaps were later addressed by graph traversal and context
+service work; this document should be refreshed before it is used for current
+planning.
 
 **Verdict**: Good foundation, needs 2-3 enhancements for production RAG workloads.
 

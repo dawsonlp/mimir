@@ -1,4 +1,8 @@
-"""Async httpx client for Mímir V2 API."""
+"""Legacy async httpx client for validation-scenarios.
+
+This module predates the current v5.5 contract. The validation tool should move
+to the published mimir-client package during modernization.
+"""
 
 import os
 from uuid import UUID
@@ -7,7 +11,7 @@ import httpx
 
 
 class MimirClient:
-    """Async HTTP client for Mímir V2 API.
+    """Legacy async HTTP client for older Mimir API usage.
     
     Covers artifacts, relations, context, and search endpoints.
     Uses httpx for async HTTP requests.

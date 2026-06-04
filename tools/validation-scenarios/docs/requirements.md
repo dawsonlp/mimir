@@ -2,7 +2,23 @@
 
 ## Overview
 
-A command-line tool for validating Mímir V2 API functionality through real-world usage scenarios. This tool demonstrates the complete lifecycle of knowledge storage, analysis, and retrieval.
+A command-line tool for validating current Mimir API functionality through real-world usage scenarios. This tool should demonstrate the complete lifecycle of knowledge storage, analysis, retrieval, provenance, and external change visibility.
+
+## Current Status
+
+The implementation currently in `tools/validation-scenarios` is a legacy
+V2-era demo scaffold. It should be modernized before being treated as a
+contract/conformance suite for Mimir v5.5+.
+
+Modernization requirements:
+
+- Use the published `mimir-client` rather than maintaining a separate thin HTTP
+  client.
+- Use tenant shortnames as the primary configuration path.
+- Exercise unified `POST /search` instead of deprecated `GET /search/fulltext`.
+- Validate graph-scoped search and context retrieval against current schemas.
+- Validate provenance visibility for committed writes.
+- Validate change outbox behavior where the target runtime exposes it.
 
 ## Primary Use Case: Multi-Perspective Article Analysis
 
@@ -67,7 +83,9 @@ Given a document UUID:
 
 ### Mímir API Client
 
-Python wrapper class for Mímir V2 API:
+Use the published `mimir-client` package as the primary API client. The old
+wrapper shape below is retained as historical context and should not be treated
+as the target design:
 
 ```python
 class MimirClient:
@@ -121,7 +139,7 @@ mimir-validate scenario full --file article.md
 ```bash
 # Mímir API
 MIMIR_BASE_URL=http://localhost:38000
-MIMIR_TENANT_ID=1
+MIMIR_TENANT=default
 
 # LLM Provider
 LLM_PROVIDER=ollama

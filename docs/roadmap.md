@@ -1,7 +1,7 @@
 # Mimir — Project Roadmap
 
-**Last Updated**: 2026-03-29
-**Current Version**: v5.2.0
+**Last Updated**: 2026-06-04
+**Current Version**: v5.5.1
 
 ---
 
@@ -15,7 +15,12 @@
 | Phase 4: Graph Traversal Engine | v4.0.0 | Apache AGE Cypher engine; graph-scoped search; context service rewritten |
 | Build Modernization | v5.0.0 | Poetry to uv + hatchling (PEP 621); CI modernized |
 | Python Client Library | v5.2.0 | Async + sync clients with full API coverage; published to PyPI as `mimir-client` |
+| Client Tenant Shortname Migration | v5.3.0 | `tenant: str` shortname is the primary client identifier; `tenant_id` remains deprecated until v6.0.0 |
 | Embedding Architecture | v5.x | Dynamic per-type vector tables in `mimir_vectors` schema; HNSW indexes per embedding type; dimension validation; provider metadata |
+| UUIDv7 Rollout | v5.4.0 | Client-generated UUIDv7 support and release alignment |
+| Change Outbox | v5.5.0 | Transactional outbox, retained replay ledger, and Kafka publisher for artifact, relation, and embedding creates |
+| Tenant Metadata JSONB Fix | v5.5.1 | Tenant create/update adapts metadata dictionaries as JSONB values before passing them to psycopg |
+| Embedding Generation Library | package v0.1.0 | Standalone `mimir-embeddings` provider abstraction for Ollama/OpenAI, batching, and dimension validation |
 
 For historical design rationale on completed phases, see `docs/archive/`.
 
@@ -37,34 +42,17 @@ Every proposed addition must pass all three tests before it earns a place on the
 
 ## Forward Roadmap
 
-### Priority 1 — Embedding Generation Library
+### Priority 1 — Validation Scenarios v5 Contract Tool
 
-**Problem**: Mimir stores embeddings but deliberately does not generate them (model-agnostic storage). The `mimir-client` sends embeddings but does not generate them. There is no shared mechanism for calling embedding providers, validating dimensions, or batching requests. Every consumer re-implements this independently.
-
-**Scope**:
-- Provider abstraction (Ollama, OpenAI — extensible to others)
-- Batch embedding support
-- Dimension validation against Mimir's embedding type metadata (via `mimir-client`)
-- That's it. No ingestion policy, no retrieval policy, no context assembly.
-
-**Principle**: Mechanism, not policy. "Give me text and an embedding type, I get back a vector." Applications compose this with `mimir-client` however they see fit.
-
-**Design document**: `semantic/docs/design.md`
-
-**Dependencies**: None. `mimir-client` and embedding type metadata are already available.
-
----
-
-### Priority 2 — Validation Scenarios
-
-**Problem**: No automated conformance test suite exercises the API end-to-end from a consumer's perspective. Integration tests exist but are developer-facing, not contract-facing.
+**Problem**: A validation-scenarios CLI exists, but it is still aligned to the older V2-era API shape. It uses a local thin HTTP client, integer `MIMIR_TENANT_ID`, and deprecated `GET /search/fulltext` behavior. It is not yet an authoritative v5.5 contract/conformance suite.
 
 **Scope**:
-- Scripted end-to-end API validation scenarios
-- Contract-level verification of all documented API behaviors
-- Runnable as a standalone tool against any Mimir instance
+- Convert the tool to use the published `mimir-client` package and tenant shortnames.
+- Exercise current v5 API behavior: unified `POST /search`, graph scope, context retrieval, provenance, tenant lifecycle, embeddings, and change outbox visibility.
+- Provide scripted end-to-end scenarios runnable against any Mimir instance.
+- Keep LLM/document-analysis examples as optional demos, not the core contract.
 
-**Principle**: Mechanism — verifiable contract tests.
+**Principle**: Mechanism — verifiable contract tests. This should verify what Mimir guarantees, not prescribe application ingestion or retrieval policy.
 
 **Design documents**: `tools/validation-scenarios/docs/requirements.md`, `tools/validation-scenarios/docs/api-assessment.md`
 
@@ -72,7 +60,26 @@ Every proposed addition must pass all three tests before it earns a place on the
 
 ---
 
-### Priority 3 — Graph Engine Extensions (Phase 5)
+### Priority 2 — Outbox Runtime Handoff and Replay Validation
+
+**Problem**: The Mimir outbox and Kafka publisher are implemented in v5.5.0, but runtime confidence depends on larnet wiring and an end-to-end validation trace. The remaining risk is operational, not architectural.
+
+**Scope**:
+- larnet service wiring for `python -m mimir.outbox_publisher`.
+- Kafka topic/retention documentation for `mimir.changes.v1`.
+- Smoke validation: API write creates outbox row, publisher sends Kafka event, `published_at` updates only after acknowledgement.
+- Failure validation: Kafka outage leaves rows unpublished; restart drains backlog; consumers can deduplicate by `event_id` and resume by `sequence`.
+- Efforts projection rebuild trace, or an explicit deferral with rationale.
+
+**Principle**: Durable replay belongs to Mimir's outbox; Kafka is live delivery. Do not let infrastructure docs imply exactly-once delivery or infinite Kafka retention.
+
+**Design documents**: `docs/change-events.md`, `docs/change-outbox-architecture.md`, `docs/v5.5.0-release-notes.md`
+
+**Dependencies**: Mimir v5.5.0+ deployed with migrations; Kafka available in the target runtime.
+
+---
+
+### Priority 3 — Graph Engine Extensions
 
 **Problem**: The current graph engine handles traversal and scoped search. Advanced graph operations (pattern matching, path finding, subgraph extraction) are not yet exposed.
 
@@ -102,7 +109,7 @@ Every proposed addition must pass all three tests before it earns a place on the
 
 **Design documents**: `frontends/chatui/docs/requirements.md`, `frontends/chatui/middleware/conceptual_design.md`
 
-**Dependencies**: Priority 1 (embedding generation library).
+**Dependencies**: `mimir-client`, `mimir-embeddings`, and a concrete application retrieval/ingestion policy.
 
 ---
 
@@ -111,16 +118,18 @@ Every proposed addition must pass all three tests before it earns a place on the
 These are **application-level policy**, not library-level mechanism:
 
 - **Retrieval strategy** (naive, parent-child, graph-aware): The Mimir backend already provides unified search with strategy inference, graph scoping, and hybrid modes via `POST /search`. The `mimir-client` exposes all of these. No wrapper library is needed.
-- **Context assembly** (token budgeting, artifact selection): The Mimir backend already provides graph-based context retrieval via `GET /context/{artifact_id}`. Token budgeting for a specific LLM is an application concern.
+- **Context assembly** (token budgeting, artifact selection): The Mimir backend already provides graph-based context retrieval via `POST /context/{artifact_id}`. Token budgeting for a specific LLM is an application concern.
 - **Ingestion workflows** (chunk, store, relate, embed): How to decompose content into artifacts is domain-specific. A chat application chunks by turns. A documentation system chunks by sections. A code analysis tool chunks by functions. There is no generic "right answer" — this is policy.
 
 If multiple applications converge on shared patterns, extract those patterns into utilities at that point. Not before.
 
 ---
 
-## Priority 5 — Client Library v5.3.0 (CLI-01: Tenant Shortname Migration)
+## Completed: Client Library v5.3.0 (CLI-01: Tenant Shortname Migration)
 
-**Problem**: `mimir-client` v5.2.0 exposes `tenant_id: int` as the primary tenant identifier, but the Mimir domain identifies tenants by string shortname. This forces consumers to resolve shortnames to integers before constructing the client -- a leaked abstraction that creates friction for new customers and downstream frameworks (e.g., ooda_framework MemoryProtocol).
+**Status**: Complete in `mimir-client` v5.3.0 and carried forward in v5.5.1.
+
+**Problem addressed**: `mimir-client` v5.2.0 exposed `tenant_id: int` as the primary tenant identifier, but the Mimir domain identifies tenants by string shortname. This forced consumers to resolve shortnames to integers before constructing the client -- a leaked abstraction that created friction for new customers and downstream frameworks (e.g., ooda_framework MemoryProtocol).
 
 **Scope**:
 - Replace `tenant_id: int` with `tenant: str` (shortname) as primary constructor parameter

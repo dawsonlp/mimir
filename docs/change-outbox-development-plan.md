@@ -2,7 +2,21 @@
 
 ## Status
 
-Planned implementation process for CR-1.
+Implementation plan for CR-1.
+
+Mimir-owned implementation phases 1-5 are complete in v5.5.0:
+
+- `mimirdata.change_outbox` exists as a retained replay ledger.
+- Artifact, relation, and embedding creates write domain row, provenance row,
+  and outbox row atomically.
+- Publisher state-machine helpers exist for claiming, publishing, retrying, and
+  status reporting.
+- Kafka publisher entry point exists at `python -m mimir.outbox_publisher`.
+- User-facing event contract documentation exists in `docs/change-events.md`.
+
+Remaining work is runtime validation and handoff: larnet service wiring, Kafka
+smoke/failure tests, Efforts projection validation, and any release follow-up
+documentation discovered by those tests.
 
 Source architecture: [change-outbox-architecture.md](change-outbox-architecture.md)
 
@@ -342,20 +356,20 @@ Require:
 - larnet compose verified;
 - Efforts validation trace either complete or explicitly deferred with rationale.
 
-## Initial Implementation Tickets
+## Implementation Tickets
 
-1. `OUTBOX-001`: Add change outbox migration.
-2. `OUTBOX-002`: Add event contract models and payload builders.
-3. `OUTBOX-003`: Refactor provenance logging for caller-owned transactions.
-4. `OUTBOX-004`: Refactor artifact create transaction and outbox write.
-5. `OUTBOX-005`: Refactor relation create transaction and outbox write.
-6. `OUTBOX-006`: Refactor embedding create transaction and outbox write.
-7. `OUTBOX-007`: Add publisher repository/state machine.
-8. `OUTBOX-008`: Add Kafka publisher module.
-9. `OUTBOX-009`: Add larnet publisher service.
-10. `OUTBOX-010`: Add failure-mode integration tests.
-11. `OUTBOX-011`: Run Efforts validation trace.
-12. `OUTBOX-012`: Publish docs and release.
+1. `OUTBOX-001`: Add change outbox migration. **Done in v5.5.0.**
+2. `OUTBOX-002`: Add event contract models and payload builders. **Done in v5.5.0.**
+3. `OUTBOX-003`: Refactor provenance logging for caller-owned transactions. **Done in v5.5.0.**
+4. `OUTBOX-004`: Refactor artifact create transaction and outbox write. **Done in v5.5.0.**
+5. `OUTBOX-005`: Refactor relation create transaction and outbox write. **Done in v5.5.0.**
+6. `OUTBOX-006`: Refactor embedding create transaction and outbox write. **Done in v5.5.0.**
+7. `OUTBOX-007`: Add publisher repository/state machine. **Done in v5.5.0.**
+8. `OUTBOX-008`: Add Kafka publisher module. **Done in v5.5.0.**
+9. `OUTBOX-009`: Add larnet publisher service. **Pending outside this repo.**
+10. `OUTBOX-010`: Add failure-mode integration tests. **Pending runtime validation.**
+11. `OUTBOX-011`: Run Efforts validation trace. **Pending consumer validation.**
+12. `OUTBOX-012`: Publish docs and release. **Mimir docs/release done for v5.5.0; larnet/Efforts follow-up remains.**
 
 ## Development Cadence
 

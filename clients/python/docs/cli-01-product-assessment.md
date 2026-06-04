@@ -2,9 +2,10 @@
 
 **From:** Chief Product Officer
 **Date:** 2026-03-29
-**Status:** Accepted -- In Progress
+**Status:** Complete
 **Priority:** High
 **Target Release:** mimir-client v5.3.0
+**Current Status:** Implemented and released in v5.3.0; carried forward in v5.5.1.
 
 ---
 
@@ -61,26 +62,25 @@ transparent to the consumer.
 | Step | Owner | Status |
 |------|-------|--------|
 | Product assessment | Product | Complete |
-| Architect interface design review | Architect | Pending |
-| Implementation checklist | Product + Engineering | Pending |
-| Engineering implementation | Engineering | Pending |
-| Test verification | Engineering | Pending |
-| Release v5.3.0 | Engineering | Pending |
+| Architect interface design review | Architect | Complete |
+| Implementation checklist | Product + Engineering | Complete |
+| Engineering implementation | Engineering | Complete |
+| Test verification | Engineering | Complete |
+| Release v5.3.0 | Engineering | Complete |
 
-### RADEMO1 Workaround (until v5.3.0)
+### Historical RADEMO1 Workaround
 
-The workaround described in the original request is confirmed as functional:
+The workaround described in the original request was functional before v5.3.0:
 
 > Call `ensure_tenant(shortname)` at initialization to resolve the shortname to
 > an integer, then use the integer for subsequent calls.
 
-This workaround should be removed when v5.3.0 is available.
+This workaround should be removed from downstream consumers now that v5.3.0+
+is available.
 
 ### Timeline
 
-This is prioritized as the next `mimir-client` release. The architect review
-request has been filed. Once the interface design is confirmed, implementation
-can proceed immediately. The change is well-scoped and low-risk.
+This work shipped in `mimir-client` v5.3.0.
 
 ## References
 

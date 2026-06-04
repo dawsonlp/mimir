@@ -3,7 +3,8 @@
 **Author**: Mimir Architecture Team
 **Date**: 2026-03-04
 **Status**: Draft
-**Prerequisites**: Mimir Backend API v5.2.0, `mimir-client` v5.2.0 (PyPI)
+**Prerequisites**: Mimir Backend API v5.5.1, `mimir-client` v5.5.1 (PyPI)
+**Status**: Implemented as `mimir-embeddings` package v0.1.0.
 
 ---
 
@@ -134,7 +135,7 @@ The library can generate embeddings without `mimir-client`. Dimension validation
 
 | Document | Relationship |
 |----------|-------------|
-| `docs/roadmap.md` | Priority 1 — this is the next work item |
+| `docs/roadmap.md` | Records this work as completed and keeps current forward priorities |
 | `docs/embedding-architecture-design.md` | Backend embedding type system this library validates against |
 | `clients/python/docs/design.md` | Peer library (`mimir-client`) that applications compose with this |
 | `semantic/docs/use-cases.md` | Business use cases that applications (not this library) will implement |
