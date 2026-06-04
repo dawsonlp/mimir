@@ -9,6 +9,7 @@ V2 Changes:
 """
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from psycopg.types.json import Json
@@ -32,35 +33,78 @@ async def log_action(
     actor_id: str | None = None,
     reason: str | None = None,
     metadata: dict | None = None,
+    conn: Any | None = None,
 ) -> ProvenanceEventResponse:
     """Log a provenance event (internal use - not exposed via API)."""
     event_id = new_uuid7()
 
-    async with get_connection() as conn:
-        result = await conn.execute(
-            f"""
-            INSERT INTO {SCHEMA_NAME}.provenance_event
-                (id, tenant_id, entity_type, entity_id, action, actor_type, actor_id,
-                 reason, metadata)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, tenant_id, entity_type, entity_id, action, actor_type, actor_id,
-                      reason, metadata, created_at
-            """,
-            (
-                str(event_id),
-                tenant_id,
-                entity_type,
-                str(entity_id),
-                action,
-                actor_type,
-                actor_id,
-                reason,
-                Json(metadata) if metadata else None,
-            ),
+    if conn is not None:
+        return await _insert_provenance_event(
+            conn=conn,
+            event_id=event_id,
+            tenant_id=tenant_id,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            action=action,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            reason=reason,
+            metadata=metadata,
         )
-        row = await result.fetchone()
+
+    async with get_connection() as conn:
+        event = await _insert_provenance_event(
+            conn=conn,
+            event_id=event_id,
+            tenant_id=tenant_id,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            action=action,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            reason=reason,
+            metadata=metadata,
+        )
         await conn.commit()
 
+    return event
+
+
+async def _insert_provenance_event(
+    *,
+    conn: Any,
+    event_id: UUID,
+    tenant_id: int,
+    entity_type: str,
+    entity_id: UUID,
+    action: str,
+    actor_type: str,
+    actor_id: str | None,
+    reason: str | None,
+    metadata: dict | None,
+) -> ProvenanceEventResponse:
+    result = await conn.execute(
+        f"""
+        INSERT INTO {SCHEMA_NAME}.provenance_event
+            (id, tenant_id, entity_type, entity_id, action, actor_type, actor_id,
+             reason, metadata)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id, tenant_id, entity_type, entity_id, action, actor_type, actor_id,
+                  reason, metadata, created_at
+        """,
+        (
+            str(event_id),
+            tenant_id,
+            entity_type,
+            str(entity_id),
+            action,
+            actor_type,
+            actor_id,
+            reason,
+            Json(metadata) if metadata else None,
+        ),
+    )
+    row = await result.fetchone()
     return _row_to_provenance_response(row)
 
 

@@ -22,7 +22,7 @@ from mimir.schemas.artifact import (
     ArtifactListResponse,
     ArtifactResponse,
 )
-from mimir.services import provenance_service
+from mimir.services import change_outbox, provenance_service
 
 SCHEMA_NAME = "mimirdata"
 VECTOR_SCHEMA = "mimir_vectors"
@@ -87,23 +87,34 @@ async def create_artifact(
                 ),
             )
             row = await result.fetchone()
+            artifact = _row_to_artifact_response(row)
+            provenance_event = await provenance_service.log_action(
+                tenant_id=tenant_id,
+                entity_type="artifact",
+                entity_id=artifact.id,
+                action="create",
+                actor_type="api_client",
+                metadata={
+                    "title": artifact.title,
+                    "artifact_type": artifact.artifact_type,
+                },
+                conn=conn,
+            )
+            await change_outbox.insert_change_event(
+                conn=conn,
+                tenant_id=tenant_id,
+                entity_type="artifact",
+                entity_id=artifact.id,
+                provenance_event_id=provenance_event.id,
+                actor_type=provenance_event.actor_type,
+                actor_id=provenance_event.actor_id,
+                payload=change_outbox.build_artifact_payload(artifact),
+            )
             await conn.commit()
         except pg_errors.UniqueViolation:
             # Duplicate UUID - return None to signal 409
             await conn.rollback()
             return None
-
-    artifact = _row_to_artifact_response(row)
-
-    # Log provenance event
-    await provenance_service.log_action(
-        tenant_id=tenant_id,
-        entity_type="artifact",
-        entity_id=artifact.id,
-        action="create",
-        actor_type="api_client",
-        metadata={"title": artifact.title, "artifact_type": artifact.artifact_type},
-    )
 
     return artifact
 

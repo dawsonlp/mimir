@@ -21,7 +21,7 @@ from mimir.schemas.embedding import (
     SimilarityResult,
     SimilaritySearchResponse,
 )
-from mimir.services import provenance_service
+from mimir.services import change_outbox, provenance_service
 
 SCHEMA_NAME = "mimirdata"
 VECTOR_SCHEMA = "mimir_vectors"
@@ -97,22 +97,30 @@ async def create_embedding(tenant_id: int, data: EmbeddingCreate) -> EmbeddingRe
             (str(embedding_id), vector_str),
         )
 
+        embedding = _row_to_embedding_response(row)
+        provenance_event = await provenance_service.log_action(
+            tenant_id=tenant_id,
+            entity_type="embedding",
+            entity_id=embedding.id,
+            action="create",
+            actor_type="api_client",
+            metadata={
+                "embedding_type": data.embedding_type,
+                "artifact_id": str(data.artifact_id),
+            },
+            conn=conn,
+        )
+        await change_outbox.insert_change_event(
+            conn=conn,
+            tenant_id=tenant_id,
+            entity_type="embedding",
+            entity_id=embedding.id,
+            provenance_event_id=provenance_event.id,
+            actor_type=provenance_event.actor_type,
+            actor_id=provenance_event.actor_id,
+            payload=change_outbox.build_embedding_payload(embedding),
+        )
         await conn.commit()
-
-    embedding = _row_to_embedding_response(row)
-
-    # Log provenance event
-    await provenance_service.log_action(
-        tenant_id=tenant_id,
-        entity_type="embedding",
-        entity_id=embedding.id,
-        action="create",
-        actor_type="api_client",
-        metadata={
-            "embedding_type": data.embedding_type,
-            "artifact_id": str(data.artifact_id),
-        },
-    )
 
     return embedding
 

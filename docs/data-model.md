@@ -180,6 +180,36 @@ Audit log for all changes.
 
 ---
 
+### change_outbox (Append-Only Replay Ledger)
+
+Durable ledger of committed Mimir substrate writes for external projection consumers.
+Rows are inserted transactionally with the domain write and retained after publication
+so consumers can backfill from Mimir even when Kafka retention has expired.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID PK | UUIDv7 event id; consumer deduplication key |
+| tenant_id | INT FK | Reference to tenant.id |
+| entity_type | TEXT | Changed entity type: artifact, relation, embedding |
+| entity_id | UUID | ID of the changed entity |
+| action | TEXT | Action performed: create |
+| occurred_at | TIMESTAMPTZ | When the change occurred |
+| sequence | BIGINT IDENTITY | Global replay cursor |
+| provenance_event_id | UUID | Provenance event explaining the change |
+| correlation_id | UUID | Optional cross-write correlation id |
+| actor_type | TEXT | Actor type copied from provenance context |
+| actor_id | TEXT | Actor identifier copied from provenance context |
+| payload | JSONB | Compact entity-specific facts for consumers |
+| published_at | TIMESTAMPTZ | Set after Kafka acknowledgement; row remains retained |
+| publish_attempts | INT | Number of publisher attempts |
+| next_attempt_at | TIMESTAMPTZ | Earliest time an unpublished row is eligible for retry |
+| last_error | TEXT | Last publisher error, if any |
+
+**Delivery semantics:** The outbox supports at-least-once Kafka delivery. Consumers
+deduplicate by `id` and resume/backfill by `sequence`.
+
+---
+
 ## Indexes
 
 | Table | Index Type | Purpose |
@@ -192,6 +222,9 @@ Audit log for all changes.
 | relation | B-tree | source_id, target_id, relation_type |
 | embedding | HNSW | embedding vector (cosine similarity) |
 | provenance_event | B-tree | entity_type/id, created_at |
+| change_outbox | B-tree partial | due unpublished rows by next_attempt_at + sequence |
+| change_outbox | B-tree | tenant_id + sequence for replay/backfill |
+| change_outbox | B-tree | tenant_id + entity_type + entity_id lookup |
 
 ## What Changed from V1
 

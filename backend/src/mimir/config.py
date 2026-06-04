@@ -118,6 +118,38 @@ class Settings(BaseSettings):
         description="Allowed CORS origins (list of URLs or '*' for all)",
     )
 
+    # Change outbox publisher settings
+    kafka_bootstrap_servers: str | None = Field(
+        default=None,
+        description="Kafka bootstrap servers for the change outbox publisher",
+    )
+    mimir_change_topic: str = Field(
+        default="mimir.changes.v1",
+        description="Kafka topic for Mimir substrate change events",
+    )
+    outbox_batch_size: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description="Maximum outbox events claimed per publisher batch",
+    )
+    outbox_poll_interval_seconds: float = Field(
+        default=1.0,
+        ge=0.1,
+        le=60.0,
+        description="Publisher sleep interval when no outbox rows are due",
+    )
+    outbox_retry_base_seconds: int = Field(
+        default=1,
+        ge=1,
+        description="Base retry delay for failed outbox publishes",
+    )
+    outbox_retry_max_seconds: int = Field(
+        default=300,
+        ge=1,
+        description="Maximum retry delay for failed outbox publishes",
+    )
+
     @field_validator("postgres_password")
     @classmethod
     def validate_password_strength(cls, v: SecretStr) -> SecretStr:

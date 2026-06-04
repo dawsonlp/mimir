@@ -23,7 +23,7 @@ from mimir.schemas.relation import (
     RelationListResponse,
     RelationResponse,
 )
-from mimir.services import provenance_service
+from mimir.services import change_outbox, provenance_service
 
 SCHEMA_NAME = "mimirdata"
 
@@ -61,27 +61,35 @@ async def create_relation(
                 ),
             )
             row = await result.fetchone()
+            relation = _row_to_relation_response(row)
+            provenance_event = await provenance_service.log_action(
+                tenant_id=tenant_id,
+                entity_type="relation",
+                entity_id=relation.id,
+                action="create",
+                actor_type="api_client",
+                metadata={
+                    "relation_type": relation.relation_type,
+                    "source_id": str(relation.source_id),
+                    "target_id": str(relation.target_id),
+                },
+                conn=conn,
+            )
+            await change_outbox.insert_change_event(
+                conn=conn,
+                tenant_id=tenant_id,
+                entity_type="relation",
+                entity_id=relation.id,
+                provenance_event_id=provenance_event.id,
+                actor_type=provenance_event.actor_type,
+                actor_id=provenance_event.actor_id,
+                payload=change_outbox.build_relation_payload(relation),
+            )
             await conn.commit()
         except pg_errors.UniqueViolation:
             # Duplicate relation - return None to signal 409
             await conn.rollback()
             return None
-
-    relation = _row_to_relation_response(row)
-
-    # Log provenance event
-    await provenance_service.log_action(
-        tenant_id=tenant_id,
-        entity_type="relation",
-        entity_id=relation.id,
-        action="create",
-        actor_type="api_client",
-        metadata={
-            "relation_type": relation.relation_type,
-            "source_id": str(relation.source_id),
-            "target_id": str(relation.target_id),
-        },
-    )
 
     return relation
 
