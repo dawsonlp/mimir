@@ -9,11 +9,12 @@ V2 Changes:
 """
 
 from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from psycopg.types.json import Json
 
 from mimir.database import get_connection
+from mimir.ids import new_uuid7
 from mimir.schemas.provenance import (
     ProvenanceEventListResponse,
     ProvenanceEventResponse,
@@ -33,7 +34,7 @@ async def log_action(
     metadata: dict | None = None,
 ) -> ProvenanceEventResponse:
     """Log a provenance event (internal use - not exposed via API)."""
-    event_id = uuid4()
+    event_id = new_uuid7()
 
     async with get_connection() as conn:
         result = await conn.execute(

@@ -11,12 +11,13 @@ V2 Changes:
 - Returns 409 Conflict on duplicate relation
 """
 
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from psycopg import errors as pg_errors
 from psycopg.types.json import Json
 
 from mimir.database import get_connection
+from mimir.ids import new_uuid7
 from mimir.schemas.relation import (
     RelationCreate,
     RelationListResponse,
@@ -36,7 +37,7 @@ async def create_relation(
     Returns None if duplicate relation exists (caller should return 409).
     """
     # Use client-provided UUID or generate one
-    relation_id = data.id if data.id else uuid4()
+    relation_id = data.id if data.id else new_uuid7()
 
     async with get_connection() as conn:
         try:

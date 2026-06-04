@@ -6,7 +6,7 @@
 -- =============================================================================
 
 CREATE TABLE mimirdata.relation (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     tenant_id INT NOT NULL REFERENCES mimirdata.tenant(id) ON DELETE CASCADE,
     
     -- Source and target artifacts (UUID references)

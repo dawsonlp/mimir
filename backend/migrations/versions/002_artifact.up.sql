@@ -6,7 +6,7 @@
 -- =============================================================================
 
 CREATE TABLE mimirdata.artifact (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     tenant_id INT NOT NULL REFERENCES mimirdata.tenant(id) ON DELETE CASCADE,
     artifact_type TEXT NOT NULL REFERENCES mimirdata.artifact_type(code),
     
@@ -62,7 +62,7 @@ CREATE INDEX idx_artifact_search ON mimirdata.artifact USING GIN (search_vector)
 CREATE INDEX idx_artifact_created ON mimirdata.artifact (tenant_id, created_at DESC);
 
 COMMENT ON TABLE mimirdata.artifact IS 'Core content entity - all content types are artifacts (append-only)';
-COMMENT ON COLUMN mimirdata.artifact.id IS 'UUID primary key - client-generated UUIDv7 preferred, or server gen_random_uuid()';
+COMMENT ON COLUMN mimirdata.artifact.id IS 'UUIDv7 primary key - client-generated preferred, or server uuidv7()';
 COMMENT ON COLUMN mimirdata.artifact.artifact_type IS 'FK to artifact_type vocabulary table';
 COMMENT ON COLUMN mimirdata.artifact.parent_artifact_id IS 'Parent artifact for positional types (chunk, quote, etc.)';
 COMMENT ON COLUMN mimirdata.artifact.start_offset IS 'Character offset for positional types';

@@ -7,11 +7,12 @@ Features:
 - Append-only: no delete operations
 """
 
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from psycopg.types.json import Json
 
 from mimir.database import get_connection
+from mimir.ids import new_uuid7
 from mimir.schemas.embedding import (
     EmbeddingCreate,
     EmbeddingListResponse,
@@ -64,7 +65,7 @@ async def create_embedding(tenant_id: int, data: EmbeddingCreate) -> EmbeddingRe
             f"Embedding dimensions mismatch: {data.embedding_type} expects {expected_dims}, got {actual_dims}"
         )
 
-    embedding_id = uuid4()
+    embedding_id = new_uuid7()
     vector_str = "[" + ",".join(str(v) for v in data.embedding) + "]"
 
     async with get_connection() as conn:

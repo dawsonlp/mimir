@@ -2,7 +2,7 @@
 # SECURITY: No secrets in image - all credentials provided at runtime
 
 # ── Build stage ──────────────────────────────────────────────
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 WORKDIR /app
 
 # Install uv (fast Python package installer)
@@ -22,7 +22,7 @@ COPY src/ ./src/
 RUN uv pip install --no-cache .
 
 # ── Runtime stage ────────────────────────────────────────────
-FROM python:3.13-slim AS runtime
+FROM python:3.14-slim AS runtime
 WORKDIR /app
 
 # Copy the fully-built venv (deps + installed package + metadata)

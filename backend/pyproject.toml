@@ -3,11 +3,11 @@ name = "mimir"
 # SINGLE SOURCE OF TRUTH for version.
 # All other files (__init__.py, config.py, main.py) read from here via importlib.metadata.
 # To release: bump this version, commit, tag (vX.Y.Z), push. CI builds and deploys automatically.
-version = "5.0.5"
+version = "5.4.0"
 description = "Mímir - Durable Memory & Meta-Analysis Storage System"
 authors = [{name = "Development Team"}]
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 
 dependencies = [
     # Core - FastAPI stack
@@ -62,7 +62,7 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 mypy_path = "src"
 # Pragmatic approach - only enable checks that catch real bugs
 check_untyped_defs = true
@@ -75,7 +75,7 @@ warn_return_any = false
 
 [tool.ruff]
 src = ["src"]
-target-version = "py313"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = [
@@ -102,5 +102,5 @@ ignore = [
 known-first-party = ["mimir"]
 
 [tool.black]
-target-version = ["py313"]
+target-version = ["py314"]
 line-length = 88

@@ -140,7 +140,7 @@ class UnifiedSearchRequest(BaseModel):
     )
 
     # === Graph scope ===
-    graph_scope: "GraphScope | None" = Field(
+    graph_scope: GraphScope | None = Field(
         None,
         description="Graph-based scoping: traverse from root artifact and restrict "
         "search to the traversal result set. Mutually exclusive with scope_artifact_id.",
@@ -155,7 +155,7 @@ class UnifiedSearchRequest(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_scope_exclusivity(self) -> "UnifiedSearchRequest":
+    def validate_scope_exclusivity(self) -> UnifiedSearchRequest:
         """Ensure scope_artifact_id and graph_scope are mutually exclusive."""
         if self.scope_artifact_id is not None and self.graph_scope is not None:
             raise ValueError(

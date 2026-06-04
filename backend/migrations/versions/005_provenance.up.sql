@@ -6,7 +6,7 @@
 -- =============================================================================
 
 CREATE TABLE mimirdata.provenance_event (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     tenant_id INT NOT NULL REFERENCES mimirdata.tenant(id) ON DELETE CASCADE,
     
     -- Entity affected (artifact, relation, or embedding)

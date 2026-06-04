@@ -32,10 +32,10 @@ Switch all content tables to UUID primary keys with UUIDv7 preferred:
 ### Implementation Details
 
 ```sql
--- Database uses UUID primary keys with default gen_random_uuid()
--- Client can provide UUIDv7 for better ordering
+-- Database uses UUIDv7 primary keys by default
+-- Clients can provide UUIDv7 for pre-linked graphs and idempotency
 CREATE TABLE mimirdata.artifact (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     ...
 );
 ```
@@ -259,12 +259,7 @@ If Mímir had production data, migration would require:
 
 ### UUID Generation
 ```python
-# Python 3.14+ (built-in)
 from uuid import uuid7
-artifact_id = uuid7()
-
-# Python 3.13 (via uuid7 package)
-from uuid_extensions import uuid7
 artifact_id = uuid7()
 ```
 

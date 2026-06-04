@@ -151,7 +151,7 @@ class Settings(BaseSettings):
         return v.upper()
 
     @model_validator(mode="after")
-    def validate_embedding_configuration(self) -> "Settings":
+    def validate_embedding_configuration(self) -> Settings:
         """Validate embedding configuration."""
         import warnings
 

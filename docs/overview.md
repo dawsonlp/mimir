@@ -89,7 +89,7 @@ Standard RAG systems store documents. Mímir stores **knowledge with provenance*
 | Component | Technology |
 |-----------|------------|
 | Database | PostgreSQL 18 + pgvector |
-| API | FastAPI (Python 3.13) |
+| API | FastAPI (Python 3.14) |
 | Data Access | Raw SQL via psycopg v3 (no ORM) |
 | Containerization | Docker Compose |
 

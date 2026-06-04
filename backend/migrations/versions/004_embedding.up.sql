@@ -48,7 +48,7 @@ COMMENT ON COLUMN mimirdata.embedding_type.vector_table_name IS 'Name of corresp
 -- =============================================================================
 
 CREATE TABLE mimirdata.embedding (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     tenant_id INT NOT NULL REFERENCES mimirdata.tenant(id) ON DELETE CASCADE,
     artifact_id UUID NOT NULL REFERENCES mimirdata.artifact(id) ON DELETE CASCADE,
     embedding_type TEXT NOT NULL REFERENCES mimirdata.embedding_type(code),

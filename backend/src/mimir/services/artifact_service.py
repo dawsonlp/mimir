@@ -10,12 +10,13 @@ V2 Changes:
 """
 
 import hashlib
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from psycopg import errors as pg_errors
 from psycopg.types.json import Json
 
 from mimir.database import get_connection
+from mimir.ids import new_uuid7
 from mimir.schemas.artifact import (
     ArtifactCreate,
     ArtifactListResponse,
@@ -54,7 +55,7 @@ async def create_artifact(
     content_hash = _hash_content(data.content)
 
     # Use client-provided UUID or generate one
-    artifact_id = data.id if data.id else uuid4()
+    artifact_id = data.id if data.id else new_uuid7()
 
     async with get_connection() as conn:
         try:
@@ -289,11 +290,9 @@ def _row_to_artifact_response(row: tuple) -> ArtifactResponse:
         id=UUID(row[0]) if isinstance(row[0], str) else row[0],
         tenant_id=row[1],
         artifact_type=row[2],
-        parent_artifact_id=UUID(row[3])
-        if isinstance(row[3], str)
-        else row[3]
-        if row[3]
-        else None,
+        parent_artifact_id=(
+            UUID(row[3]) if isinstance(row[3], str) else row[3] if row[3] else None
+        ),
         start_offset=row[4],
         end_offset=row[5],
         position_metadata=row[6],
