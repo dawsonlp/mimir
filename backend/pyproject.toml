@@ -3,7 +3,7 @@ name = "mimir"
 # SINGLE SOURCE OF TRUTH for version.
 # All other files (__init__.py, config.py, main.py) read from here via importlib.metadata.
 # To release: bump this version, commit, tag (vX.Y.Z), push. CI builds and deploys automatically.
-version = "5.5.0"
+version = "5.5.1"
 description = "Mímir - Durable Memory & Meta-Analysis Storage System"
 authors = [{name = "Development Team"}]
 readme = "README.md"

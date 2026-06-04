@@ -39,6 +39,28 @@ class TestTenantAPI:
         assert get_response.json()["shortname"] == unique_name
 
     @pytest.mark.asyncio
+    async def test_create_tenant_with_metadata_persists(self, async_client):
+        """Tenant metadata should be accepted and persisted as JSON."""
+        unique_name = f"meta-{uuid4().hex[:8]}"
+        response = await async_client.post(
+            "/tenants",
+            json={
+                "shortname": unique_name,
+                "name": "Metadata Test Tenant",
+                "tenant_type": "environment",
+                "metadata": {"source": "integration_test"},
+            },
+        )
+        assert response.status_code == 201, response.text
+
+        data = response.json()
+        assert data["metadata"] == {"source": "integration_test"}
+
+        get_response = await async_client.get(f"/tenants/{data['id']}")
+        assert get_response.status_code == 200
+        assert get_response.json()["metadata"] == {"source": "integration_test"}
+
+    @pytest.mark.asyncio
     async def test_duplicate_shortname_rejected(self, async_client):
         """Database should reject duplicate shortnames."""
         unique_name = f"dup-{uuid4().hex[:8]}"

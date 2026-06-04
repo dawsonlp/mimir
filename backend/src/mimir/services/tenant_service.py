@@ -6,6 +6,8 @@ associated artifacts, relations, embeddings, and provenance events.
 
 import contextlib
 
+from psycopg.types.json import Json
+
 from mimir.database import get_connection
 from mimir.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
 
@@ -36,7 +38,7 @@ async def create_tenant(data: TenantCreate) -> TenantResponse:
                 data.tenant_type,
                 data.description,
                 data.is_active,
-                data.metadata,
+                Json(data.metadata) if data.metadata is not None else None,
             ),
         )
         await conn.commit()
@@ -114,7 +116,7 @@ async def update_tenant(tenant_id: int, data: TenantUpdate) -> TenantResponse | 
         params.append(data.is_active)
     if data.metadata is not None:
         updates.append("metadata = %s")
-        params.append(data.metadata)
+        params.append(Json(data.metadata))
 
     if not updates:
         return await get_tenant(tenant_id)

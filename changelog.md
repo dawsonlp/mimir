@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.1] - 2026-06-04
+
+### Fixed
+
+- Tenant create and update now adapt `metadata` dictionaries as JSONB values
+  before passing them to psycopg. This fixes HTTP 500 responses from
+  `POST /tenants` and tenant metadata updates when metadata is supplied.
+
 ## [5.5.0] - 2026-06-04
 
 ### Added
@@ -220,6 +228,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hybrid search with RRF fusion
 - Context assembly endpoint
 
+[5.5.1]: https://github.com/dawsonlp/mimir/compare/v5.5.0...v5.5.1
 [5.5.0]: https://github.com/dawsonlp/mimir/compare/v5.4.0...v5.5.0
 [5.3.0]: https://github.com/dawsonlp/mimir/compare/v5.2.0...v5.3.0
 [5.0.0]: https://github.com/dawsonlp/mimir/compare/v4.0.0...v5.0.0
